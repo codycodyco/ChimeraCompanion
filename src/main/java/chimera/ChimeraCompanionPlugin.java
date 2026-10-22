@@ -1,5 +1,6 @@
 package chimera;
 
+import chimera.trigger.TriggerService;
 import org.bukkit.entity.Allay;
 import org.bukkit.event.EventHandler;
 import org.bukkit.event.Listener;
@@ -17,6 +18,8 @@ public final class ChimeraCompanionPlugin extends JavaPlugin implements Listener
 
     private CompanionManager companions;
 
+    private TriggerService triggers;
+
     private BukkitTask followTask;
 
     @Override
@@ -26,7 +29,8 @@ public final class ChimeraCompanionPlugin extends JavaPlugin implements Listener
                 getConfig().getStringList("dialogue.messages"),
                 getConfig().getInt("dialogue.interval-min", 60),
                 getConfig().getInt("dialogue.interval-max", 180));
-        getCommand("chimera").setExecutor(new ChimeraCommand(companions));
+        triggers = new TriggerService(this, companions);
+        getCommand("chimera").setExecutor(new ChimeraCommand(companions, triggers));
         getServer().getPluginManager().registerEvents(this, this);
         followTask = new FollowTask(companions)
                 .runTaskTimer(this, FollowTask.PERIOD_TICKS, FollowTask.PERIOD_TICKS);
@@ -36,11 +40,13 @@ public final class ChimeraCompanionPlugin extends JavaPlugin implements Listener
     public void onDisable() {
         followTask.cancel();
         companions.dismissAll();
+        triggers.clearAll();
     }
 
     @EventHandler
     public void onPlayerQuit(PlayerQuitEvent event) {
         companions.dismiss(event.getPlayer().getUniqueId());
+        triggers.clear(event.getPlayer().getUniqueId());
     }
 
     @EventHandler

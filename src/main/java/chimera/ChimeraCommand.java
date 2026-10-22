@@ -1,5 +1,6 @@
 package chimera;
 
+import chimera.trigger.TriggerService;
 import net.kyori.adventure.text.Component;
 import org.bukkit.command.Command;
 import org.bukkit.command.CommandExecutor;
@@ -9,7 +10,8 @@ import org.bukkit.entity.Player;
 import java.util.Locale;
 
 /**
- * Handles {@code /chimera summon}, {@code /chimera dismiss} and {@code /chimera bubble}.
+ * Handles {@code /chimera summon}, {@code /chimera dismiss}, {@code /chimera bubble} and
+ * {@code /chimera testtrigger <id>}.
  */
 public final class ChimeraCommand implements CommandExecutor {
 
@@ -17,9 +19,11 @@ public final class ChimeraCommand implements CommandExecutor {
     private static final String TEST_BUBBLE = "你好会上班呀～";
 
     private final CompanionManager companions;
+    private final TriggerService triggers;
 
-    public ChimeraCommand(CompanionManager companions) {
+    public ChimeraCommand(CompanionManager companions, TriggerService triggers) {
         this.companions = companions;
+        this.triggers = triggers;
     }
 
     @Override
@@ -28,8 +32,9 @@ public final class ChimeraCommand implements CommandExecutor {
             sender.sendMessage(Component.text(PREFIX + "该指令只能由玩家执行。"));
             return true;
         }
-        if (args.length != 1) {
-            player.sendMessage(Component.text(PREFIX + "用法：/" + label + " <summon|dismiss|bubble>"));
+        if (args.length == 0) {
+            player.sendMessage(Component.text(PREFIX + "用法：/" + label
+                    + " <summon|dismiss|bubble|testtrigger <id>>"));
             return true;
         }
 
@@ -43,6 +48,7 @@ public final class ChimeraCommand implements CommandExecutor {
             }
             case "dismiss" -> {
                 if (companions.dismiss(player.getUniqueId())) {
+                    triggers.clear(player.getUniqueId());
                     player.sendMessage(Component.text(PREFIX + "小奇美拉回去休息了。"));
                 } else {
                     player.sendMessage(Component.text(PREFIX + "你现在没有小奇美拉。"));
@@ -55,7 +61,15 @@ public final class ChimeraCommand implements CommandExecutor {
                     player.sendMessage(Component.text(PREFIX + "先召唤小奇美拉吧。"));
                 }
             }
-            default -> player.sendMessage(Component.text(PREFIX + "用法：/" + label + " <summon|dismiss|bubble>"));
+            case "testtrigger" -> {
+                if (args.length == 2) {
+                    triggers.showTrigger(player, args[1].toLowerCase(Locale.ROOT));
+                } else {
+                    player.sendMessage(Component.text(PREFIX + "用法：/" + label + " testtrigger <id>"));
+                }
+            }
+            default -> player.sendMessage(Component.text(PREFIX + "用法：/" + label
+                    + " <summon|dismiss|bubble|testtrigger <id>>"));
         }
         return true;
     }

@@ -8,3 +8,17 @@ dialogue:
     - "这附近好像有钻石的味道～"
     - "走这么快，是在躲我吗～"
     - "又挖矿呀，真拼呢～"
+
+# Lines shown for behaviour triggers, addressed by id (for example mining.diamond).
+# Every normal trigger shares the same per-player cooldown.
+triggers:
+  cooldown-seconds: 60
+  mining:
+    diamond:
+      messages:
+        - "老板运气真好呢～"
+        - "今天也很努力呀～"
+  death:
+    fall:
+      messages:
+        - "老板好喜欢地面呢～"
