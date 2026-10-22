@@ -1,4 +1,4 @@
-package dev.cody.chimera;
+package chimera;
 
 import net.kyori.adventure.text.Component;
 import org.bukkit.command.Command;

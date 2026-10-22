@@ -1,4 +1,4 @@
-package dev.cody.chimera;
+package chimera;
 
 import org.bukkit.Location;
 import org.bukkit.entity.Allay;
@@ -17,7 +17,7 @@ import java.util.UUID;
  */
 public final class CompanionManager {
 
-    private static final double SUMMON_DISTANCE = 1.5;
+    private static final double BEHIND_DISTANCE = 1.5;
 
     private final Map<UUID, Allay> companions = new HashMap<>();
 
@@ -37,12 +37,11 @@ public final class CompanionManager {
             companions.remove(playerId);
         }
 
-        Allay allay = player.getWorld().spawn(summonLocation(player), Allay.class);
+        Allay allay = player.getWorld().spawn(behind(player.getLocation()), Allay.class);
         allay.setPersistent(false);
         allay.setInvulnerable(true);
         allay.setCollidable(false);
         allay.setSilent(true);
-        allay.setAware(false);
         allay.setCanPickupItems(false);
         allay.setCanDuplicate(false);
 
@@ -74,8 +73,19 @@ public final class CompanionManager {
         companions.clear();
     }
 
-    private static Location summonLocation(Player player) {
-        Location location = player.getLocation();
-        return location.subtract(location.getDirection().setY(0).normalize().multiply(SUMMON_DISTANCE));
+    /**
+     * @return the companion owned by the player, or {@code null} if it has none
+     */
+    public Allay companionOf(Player player) {
+        return companions.get(player.getUniqueId());
+    }
+
+    /**
+     * The point 1.5 blocks behind the given player location, used as both the summon spot and the
+     * follow target. The location is not modified.
+     */
+    static Location behind(Location playerLocation) {
+        Location target = playerLocation.clone();
+        return target.subtract(target.getDirection().setY(0).normalize().multiply(BEHIND_DISTANCE));
     }
 }

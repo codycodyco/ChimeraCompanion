@@ -1,6 +1,6 @@
 name: ChimeraCompanion
 version: '${version}'
-main: dev.cody.chimera.ChimeraCompanionPlugin
+main: chimera.ChimeraCompanionPlugin
 api-version: '26.2'
 description: A lightweight companion pet for Paper 26.2
 author: cody
