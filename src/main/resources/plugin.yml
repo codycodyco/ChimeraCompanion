@@ -7,7 +7,7 @@ author: cody
 commands:
   chimera:
     description: Summon or dismiss your Chimera companion
-    usage: /chimera <summon|dismiss|bubble|testtrigger|reload>
+    usage: /chimera <summon|dismiss|bubble|testtrigger|reload|model>
 permissions:
   chimera.admin:
     description: Allows reloading the ChimeraCompanion configuration

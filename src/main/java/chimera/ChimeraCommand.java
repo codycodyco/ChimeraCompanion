@@ -36,7 +36,7 @@ public final class ChimeraCommand implements CommandExecutor {
         }
         if (args.length == 0) {
             player.sendMessage(Component.text(PREFIX + "用法：/" + label
-                    + " <summon|dismiss|bubble|testtrigger|reload>"));
+                    + " <summon|dismiss|bubble|testtrigger|reload|model>"));
             return true;
         }
 
@@ -78,8 +78,25 @@ public final class ChimeraCommand implements CommandExecutor {
                     player.sendMessage(Component.text(PREFIX + "你没有权限执行该指令。"));
                 }
             }
+            case "model" -> {
+                if (!player.hasPermission("chimera.admin")) {
+                    player.sendMessage(Component.text(PREFIX + "你没有权限执行该指令。"));
+                } else if (args.length > 3) {
+                    player.sendMessage(Component.text(PREFIX + "用法：/" + label + " model [scale] [yaw]"));
+                } else {
+                    try {
+                        float scale = args.length >= 2 ? Float.parseFloat(args[1]) : 1.0F;
+                        float yaw = args.length >= 3 ? Float.parseFloat(args[2]) : 0.0F;
+                        plugin.showTestModel(player, scale, yaw);
+                        player.sendMessage(Component.text(PREFIX
+                                + "已生成测试模型：scale=" + scale + "，yaw=" + yaw));
+                    } catch (NumberFormatException e) {
+                        player.sendMessage(Component.text(PREFIX + "用法：/" + label + " model [scale] [yaw]"));
+                    }
+                }
+            }
             default -> player.sendMessage(Component.text(PREFIX + "用法：/" + label
-                    + " <summon|dismiss|bubble|testtrigger|reload>"));
+                    + " <summon|dismiss|bubble|testtrigger|reload|model>"));
         }
         return true;
     }

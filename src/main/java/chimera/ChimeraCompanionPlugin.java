@@ -1,11 +1,13 @@
 package chimera;
 
 import chimera.trigger.TriggerService;
+import org.bukkit.Location;
 import org.bukkit.Material;
 import org.bukkit.Tag;
 import org.bukkit.damage.DamageType;
-import org.bukkit.entity.Allay;
+import org.bukkit.entity.Cat;
 import org.bukkit.entity.Enemy;
+import org.bukkit.entity.ItemDisplay;
 import org.bukkit.entity.Player;
 import org.bukkit.event.EventHandler;
 import org.bukkit.event.EventPriority;
@@ -65,6 +67,9 @@ public final class ChimeraCompanionPlugin extends JavaPlugin implements Listener
     /** 已在本轮挂机中成功提醒过的玩家；恢复活动或失去跟宠后移除。 */
     private final Set<UUID> idleReminded = new HashSet<>();
 
+    /** 每个玩家当前的模型测试实体，重复执行指令时替换。 */
+    private final Map<UUID, ItemDisplay> testModels = new HashMap<>();
+
     /** 挂机检查周期：20 秒。 */
     private static final long IDLE_CHECK_PERIOD_TICKS = 20L * 20;
 
@@ -97,6 +102,10 @@ public final class ChimeraCompanionPlugin extends JavaPlugin implements Listener
         triggers.clearAll();
         pendingDeathTriggers.clear();
         idleReminded.clear();
+        for (ItemDisplay display : testModels.values()) {
+            display.remove();
+        }
+        testModels.clear();
     }
 
     /**
@@ -121,6 +130,10 @@ public final class ChimeraCompanionPlugin extends JavaPlugin implements Listener
         triggers.clear(playerId);
         pendingDeathTriggers.remove(playerId);
         idleReminded.remove(playerId);
+        ItemDisplay testModel = testModels.remove(playerId);
+        if (testModel != null) {
+            testModel.remove();
+        }
     }
 
     /**
@@ -139,12 +152,11 @@ public final class ChimeraCompanionPlugin extends JavaPlugin implements Listener
     @EventHandler
     public void onPlayerDeath(PlayerDeathEvent event) {
         Player player = event.getEntity();
-        Allay companion = companions.companionOf(player);
+        Cat companion = companions.companionOf(player);
         if (companion == null) {
             return;
         }
-        // 让跟宠停在死亡位置：清掉旧路径并关闭 AI，避免它在玩家死亡期间乱飞或继续寻路。
-        companion.getPathfinder().stopPathfinding();
+        // 让跟宠停在死亡位置：关闭 AI，避免它在玩家死亡期间走动。
         companion.setAware(false);
 
         // 按死因记住对应的台词 ID，等复活后再交给 TriggerService 显示。
@@ -228,16 +240,43 @@ public final class ChimeraCompanionPlugin extends JavaPlugin implements Listener
         Player player = event.getPlayer();
         String triggerId = pendingDeathTriggers.remove(player.getUniqueId());
 
-        Allay companion = companions.companionOf(player);
+        Cat companion = companions.companionOf(player);
         if (companion == null) {
             return;
         }
         companion.setAware(true);
         companion.teleport(CompanionManager.behind(event.getRespawnLocation()));
+        // 复活可能跨世界，模型跟着重新创建，避免留在旧世界。
+        companions.recreateModel(player.getUniqueId(), companion);
 
         if (triggerId != null) {
             triggers.showTrigger(player, triggerId);
         }
+    }
+
+    /**
+     * 在玩家面前生成一个独立的 ItemDisplay，用于验证 {@code chimera:companion} 模型。
+     * 重复执行会先移除上一次生成的测试模型。
+     *
+     * @param scale 模型缩放
+     * @param yaw   模型朝向（度）
+     */
+    public void showTestModel(Player player, float scale, float yaw) {
+        UUID playerId = player.getUniqueId();
+        ItemDisplay previous = testModels.remove(playerId);
+        if (previous != null) {
+            previous.remove();
+        }
+
+        Location at = player.getEyeLocation()
+                .add(player.getLocation().getDirection().normalize().multiply(2.0))
+                .subtract(0, CompanionManager.MODEL_CENTER_Y * scale, 0);
+        ItemDisplay display = player.getWorld().spawn(at, ItemDisplay.class);
+        display.setItemStack(CompanionManager.companionModelItem());
+        display.setPersistent(false);
+        display.setTransformation(CompanionManager.modelTransformation(scale, yaw));
+
+        testModels.put(playerId, display);
     }
 
     /**

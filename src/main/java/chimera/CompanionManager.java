@@ -1,14 +1,23 @@
 package chimera;
 
 import net.kyori.adventure.text.Component;
+import net.kyori.adventure.text.format.NamedTextColor;
 import org.bukkit.Bukkit;
 import org.bukkit.Color;
 import org.bukkit.Location;
+import org.bukkit.Material;
+import org.bukkit.NamespacedKey;
 import org.bukkit.Sound;
-import org.bukkit.entity.Allay;
+import org.bukkit.entity.Cat;
 import org.bukkit.entity.Display;
+import org.bukkit.entity.ItemDisplay;
 import org.bukkit.entity.Player;
 import org.bukkit.entity.TextDisplay;
+import org.bukkit.inventory.ItemStack;
+import org.bukkit.inventory.meta.ItemMeta;
+import org.bukkit.util.Transformation;
+import org.joml.Quaternionf;
+import org.joml.Vector3f;
 
 import java.util.HashMap;
 import java.util.List;
@@ -39,15 +48,28 @@ public final class CompanionManager {
     /** 连续追赶达到该 tick 数（15 秒）后尝试触发 companion.catch_up。 */
     private static final int CHASE_TRIGGER_TICKS = 15 * 20;
 
+    /** 绑定在猫身上的模型缩放；猫高约 0.7 格，模型原始高约 1.13 格。 */
+    private static final float MODEL_SCALE = 0.7F;
+    /** 模型朝向相对猫的水平朝向的固定偏移（度），实测模型正面方向后可调。 */
+    private static final float MODEL_YAW_OFFSET = 0.0F;
+    /** 模型相对猫脚底的高度偏移。 */
+    private static final double MODEL_Y_OFFSET = 0.0;
+    /** 模型包围盒中心的水平坐标（格），用于把模型对齐到猫的位置。 */
+    private static final float MODEL_CENTER_X = 0.5F;
+    private static final float MODEL_CENTER_Z = 0.632F;
+    /** 模型包围盒中心的高度（格），仅静态测试命令用来让模型居中。 */
+    static final float MODEL_CENTER_Y = 0.564F;
+
     private List<String> messages;
     private int intervalMinSeconds;
     private int intervalMaxSeconds;
 
-    private final Map<UUID, Allay> companions = new HashMap<>();
+    private final Map<UUID, Cat> companions = new HashMap<>();
     private final Map<UUID, Bubble> bubbles = new HashMap<>();
     private final Map<UUID, Talk> talks = new HashMap<>();
     private final Map<UUID, Integer> nextSoundTicks = new HashMap<>();
     private final Map<UUID, Chase> chases = new HashMap<>();
+    private final Map<UUID, ItemDisplay> models = new HashMap<>();
 
     private record Bubble(TextDisplay display, int expiresAtTick) {
     }
@@ -80,7 +102,7 @@ public final class CompanionManager {
      */
     public boolean summon(Player player) {
         UUID playerId = player.getUniqueId();
-        Allay current = companions.get(playerId);
+        Cat current = companions.get(playerId);
         if (current != null) {
             if (current.isValid()) {
                 return false;
@@ -89,15 +111,17 @@ public final class CompanionManager {
             companions.remove(playerId);
         }
 
-        Allay allay = player.getWorld().spawn(behind(player.getLocation()), Allay.class);
-        allay.setPersistent(false);
-        allay.setInvulnerable(true);
-        allay.setCollidable(false);
-        allay.setSilent(true);
-        allay.setCanPickupItems(false);
-        allay.setCanDuplicate(false);
+        Cat cat = player.getWorld().spawn(behind(player.getLocation()), Cat.class);
+        cat.setOwner(player);
+        cat.setSitting(false);
+        cat.setPersistent(false);
+        cat.setInvulnerable(true);
+        cat.setCollidable(false);
+        cat.setSilent(true);
+        cat.setCanPickupItems(false);
 
-        companions.put(playerId, allay);
+        companions.put(playerId, cat);
+        createModel(playerId, cat);
         talks.put(playerId, new Talk(scheduleNext(), -1));
         nextSoundTicks.put(playerId, scheduleNextSound());
         chases.remove(playerId);
@@ -111,14 +135,15 @@ public final class CompanionManager {
      */
     public boolean dismiss(UUID playerId) {
         clearBubble(playerId);
+        clearModel(playerId);
         talks.remove(playerId);
         nextSoundTicks.remove(playerId);
         chases.remove(playerId);
-        Allay allay = companions.remove(playerId);
-        if (allay == null) {
+        Cat cat = companions.remove(playerId);
+        if (cat == null) {
             return false;
         }
-        allay.remove();
+        cat.remove();
         return true;
     }
 
@@ -126,10 +151,14 @@ public final class CompanionManager {
      * Removes every tracked companion and bubble, used when the plugin shuts down.
      */
     public void dismissAll() {
-        for (Allay allay : companions.values()) {
-            allay.remove();
+        for (Cat cat : companions.values()) {
+            cat.remove();
         }
         companions.clear();
+        for (ItemDisplay model : models.values()) {
+            model.remove();
+        }
+        models.clear();
         for (Bubble bubble : bubbles.values()) {
             bubble.display().remove();
         }
@@ -140,17 +169,22 @@ public final class CompanionManager {
     }
 
     /**
-     * Shows a bubble with the given text above the player's companion. Showing it again reuses the
-     * existing display instead of stacking a second one.
+     * Shows a bubble with the given text above the player's companion, and mirrors the same line
+     * into the owner's chat. Showing it again reuses the existing display instead of stacking a
+     * second one.
      *
      * @return {@code false} if the player has no companion to put the bubble above
      */
     public boolean showBubble(Player player, String text) {
-        Allay companion = companionOf(player);
+        Cat companion = companionOf(player);
         if (companion == null) {
             return false;
         }
         playSound(companion);
+        // 头顶气泡和聊天栏使用同一句台词，不重新随机。
+        player.sendMessage(Component.text("[说怪话] ", NamedTextColor.LIGHT_PURPLE)
+                .append(Component.text(text, NamedTextColor.WHITE)));
+
         UUID playerId = player.getUniqueId();
         int expiresAtTick = Bukkit.getCurrentTick() + BUBBLE_TICKS;
         Bubble current = bubbles.get(playerId);
@@ -176,7 +210,7 @@ public final class CompanionManager {
     /**
      * Moves the player's bubble along with its companion and removes it once it has expired.
      */
-    public void tickBubble(Player player, Allay companion) {
+    public void tickBubble(Player player, Cat companion) {
         UUID playerId = player.getUniqueId();
         Bubble bubble = bubbles.get(playerId);
         if (bubble == null) {
@@ -229,7 +263,7 @@ public final class CompanionManager {
     /**
      * Plays the allay sound once the companion's timer has run out, then schedules the next play.
      */
-    public void tickSound(Player player, Allay companion) {
+    public void tickSound(Player player, Cat companion) {
         UUID playerId = player.getUniqueId();
         Integer nextTick = nextSoundTicks.get(playerId);
         if (nextTick == null || Bukkit.getCurrentTick() < nextTick) {
@@ -248,7 +282,7 @@ public final class CompanionManager {
     /**
      * Plays the sound where the companion currently is, so nearby players hear it.
      */
-    private static void playSound(Allay companion) {
+    private static void playSound(Cat companion) {
         companion.getWorld().playSound(companion.getLocation(),
                 Sound.ENTITY_ALLAY_AMBIENT_WITHOUT_ITEM, SOUND_VOLUME, SOUND_PITCH);
     }
@@ -279,6 +313,76 @@ public final class CompanionManager {
     }
 
     /**
+     * 为猫创建模型实体，位置与朝向立即与猫对齐。
+     */
+    private void createModel(UUID playerId, Cat cat) {
+        Location at = cat.getLocation().add(0, MODEL_Y_OFFSET, 0);
+        ItemDisplay display = cat.getWorld().spawn(at, ItemDisplay.class);
+        display.setItemStack(companionModelItem());
+        display.setPersistent(false);
+        display.setTeleportDuration((int) FollowTask.PERIOD_TICKS);
+        display.setTransformation(modelTransformation(MODEL_SCALE, cat.getLocation().getYaw()));
+        models.put(playerId, display);
+    }
+
+    /**
+     * 移除玩家对应的模型实体。
+     */
+    public void clearModel(UUID playerId) {
+        ItemDisplay display = models.remove(playerId);
+        if (display != null) {
+            display.remove();
+        }
+    }
+
+    /**
+     * 在猫当前所在世界重新创建模型，用于跨世界传送后替换旧世界的模型。
+     */
+    public void recreateModel(UUID playerId, Cat cat) {
+        clearModel(playerId);
+        createModel(playerId, cat);
+    }
+
+    /**
+     * 让模型跟随猫的位置和水平朝向；每 10 tick 一次的传送由客户端插值成平滑移动。
+     */
+    public void tickModel(UUID playerId, Cat cat) {
+        ItemDisplay display = models.get(playerId);
+        if (display == null) {
+            return;
+        }
+        display.teleport(cat.getLocation().add(0, MODEL_Y_OFFSET, 0));
+        display.setTransformation(modelTransformation(MODEL_SCALE, cat.getLocation().getYaw()));
+    }
+
+    /**
+     * 以模型包围盒中心为基准，构造「绕 Y 轴旋转、缩放、平移到显示实体原点」的变换，
+     * 使模型脚底落在显示实体位置上。
+     */
+    static Transformation modelTransformation(float scale, float yaw) {
+        float radians = (float) Math.toRadians(yaw + MODEL_YAW_OFFSET);
+        Vector3f translation = new Vector3f(-MODEL_CENTER_X, 0.0F, -MODEL_CENTER_Z)
+                .mul(scale)
+                .rotateY(radians);
+        return new Transformation(
+                translation,
+                new Quaternionf().rotateY(radians),
+                new Vector3f(scale, scale, scale),
+                new Quaternionf());
+    }
+
+    /**
+     * 构造带 {@code chimera:companion} 物品模型组件的物品。
+     */
+    static ItemStack companionModelItem() {
+        ItemStack item = new ItemStack(Material.PAPER);
+        ItemMeta meta = item.getItemMeta();
+        meta.setItemModel(new NamespacedKey("chimera", "companion"));
+        item.setItemMeta(meta);
+        return item;
+    }
+
+    /**
      * Removes the player's bubble, if one is showing.
      */
     public void clearBubble(UUID playerId) {
@@ -291,11 +395,11 @@ public final class CompanionManager {
     /**
      * @return the companion owned by the player, or {@code null} if it has none
      */
-    public Allay companionOf(Player player) {
+    public Cat companionOf(Player player) {
         return companions.get(player.getUniqueId());
     }
 
-    private static Location bubbleLocation(Allay companion) {
+    private static Location bubbleLocation(Cat companion) {
         return companion.getLocation().add(0, BUBBLE_HEIGHT, 0);
     }
 

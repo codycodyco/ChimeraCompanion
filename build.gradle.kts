@@ -41,3 +41,13 @@ tasks.processResources {
 tasks.jar {
     archiveBaseName = "ChimeraCompanion"
 }
+
+// 打包资源包：./gradlew resourcePack -> build/resourcepack/ChimeraCompanion-ResourcePack.zip
+tasks.register<Zip>("resourcePack") {
+    description = "Builds the client resource pack zip"
+    from("resourcepack") {
+        exclude("README.md")
+    }
+    archiveFileName = "ChimeraCompanion-ResourcePack.zip"
+    destinationDirectory = layout.buildDirectory.dir("resourcepack")
+}
