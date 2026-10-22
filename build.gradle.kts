@@ -1,0 +1,43 @@
+plugins {
+    java
+}
+
+group = "dev.cody"
+version = "0.1.0"
+description = "A lightweight companion pet for Paper servers"
+
+repositories {
+    mavenCentral()
+    maven("https://repo.papermc.io/repository/maven-public/")
+}
+
+val paperApiVersion = "26.2.build.134-stable"
+
+dependencies {
+    // Paper 26.2 API (Java 25 bytecode). Provided by the server at runtime.
+    compileOnly("io.papermc.paper:paper-api:$paperApiVersion")
+}
+
+java {
+    toolchain {
+        languageVersion = JavaLanguageVersion.of(25)
+    }
+}
+
+tasks.withType<JavaCompile>().configureEach {
+    options.encoding = "UTF-8"
+    options.release = 25
+    options.compilerArgs.addAll(listOf("-Xlint:deprecation", "-Xlint:unchecked"))
+}
+
+tasks.processResources {
+    val props = mapOf("version" to project.version.toString())
+    inputs.properties(props)
+    filesMatching("plugin.yml") {
+        expand(props)
+    }
+}
+
+tasks.jar {
+    archiveBaseName = "ChimeraCompanion"
+}
