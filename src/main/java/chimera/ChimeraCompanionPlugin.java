@@ -2,6 +2,7 @@ package chimera;
 
 import chimera.trigger.TriggerService;
 import org.bukkit.Location;
+import org.bukkit.NamespacedKey;
 import org.bukkit.Material;
 import org.bukkit.Tag;
 import org.bukkit.damage.DamageType;
@@ -9,6 +10,7 @@ import org.bukkit.entity.Cat;
 import org.bukkit.entity.Enemy;
 import org.bukkit.entity.ItemDisplay;
 import org.bukkit.entity.Player;
+import org.bukkit.inventory.EquipmentSlot;
 import org.bukkit.event.EventHandler;
 import org.bukkit.event.EventPriority;
 import org.bukkit.event.Listener;
@@ -16,9 +18,11 @@ import org.bukkit.event.block.BlockBreakEvent;
 import org.bukkit.event.entity.PlayerDeathEvent;
 import org.bukkit.event.player.PlayerInteractEntityEvent;
 import org.bukkit.event.player.PlayerItemConsumeEvent;
+import org.bukkit.event.player.PlayerJoinEvent;
 import org.bukkit.event.player.PlayerItemBreakEvent;
 import org.bukkit.event.player.PlayerQuitEvent;
 import org.bukkit.event.player.PlayerRespawnEvent;
+import org.bukkit.persistence.PersistentDataType;
 import org.bukkit.plugin.java.JavaPlugin;
 import org.bukkit.scheduler.BukkitTask;
 
@@ -61,6 +65,9 @@ public final class ChimeraCompanionPlugin extends JavaPlugin implements Listener
 
     private TriggerService triggers;
 
+    /** 玩家是否希望下次进服自动召唤；只由 /chimera 主动召唤/收回改写。 */
+    private NamespacedKey companionEnabledKey;
+
     private BukkitTask followTask;
 
     private final Map<UUID, String> pendingDeathTriggers = new HashMap<>();
@@ -82,6 +89,7 @@ public final class ChimeraCompanionPlugin extends JavaPlugin implements Listener
     @Override
     public void onEnable() {
         saveDefaultConfig();
+        companionEnabledKey = new NamespacedKey(this, "companion_enabled");
         companions = new CompanionManager(
                 getConfig().getStringList("dialogue.messages"),
                 getConfig().getInt("dialogue.interval-min", 60),
@@ -93,6 +101,12 @@ public final class ChimeraCompanionPlugin extends JavaPlugin implements Listener
                 .runTaskTimer(this, FollowTask.PERIOD_TICKS, FollowTask.PERIOD_TICKS);
         idleTask = getServer().getScheduler().runTaskTimer(this, this::checkIdle,
                 IDLE_CHECK_PERIOD_TICKS, IDLE_CHECK_PERIOD_TICKS);
+        // 插件重载时已有在线玩家，等一个 tick 后按持久标记恢复。
+        getServer().getScheduler().runTaskLater(this, () -> {
+            for (Player player : getServer().getOnlinePlayers()) {
+                restoreCompanion(player);
+            }
+        }, 1L);
     }
 
     @Override
@@ -138,12 +152,60 @@ public final class ChimeraCompanionPlugin extends JavaPlugin implements Listener
     }
 
     /**
+     * 玩家进服后，如果之前处于召唤状态，延迟一个 tick 恢复跟宠。
+     */
+    @EventHandler
+    public void onPlayerJoin(PlayerJoinEvent event) {
+        Player player = event.getPlayer();
+        if (!isCompanionEnabled(player)) {
+            return;
+        }
+        getServer().getScheduler().runTaskLater(this, () -> {
+            if (player.isOnline()) {
+                restoreCompanion(player);
+            }
+        }, 1L);
+    }
+
+    private void restoreCompanion(Player player) {
+        if (player.isOnline() && isCompanionEnabled(player)) {
+            companions.summon(player);
+        }
+    }
+
+    /**
+     * @return 玩家是否希望下次进服自动召唤
+     */
+    public boolean isCompanionEnabled(Player player) {
+        return player.getPersistentDataContainer().has(companionEnabledKey, PersistentDataType.BYTE);
+    }
+
+    /**
+     * 记录/移除玩家的自动召唤标记；只由 /chimera 召唤或收回时调用。
+     */
+    public void setCompanionEnabled(Player player, boolean enabled) {
+        if (enabled) {
+            player.getPersistentDataContainer().set(companionEnabledKey, PersistentDataType.BYTE, (byte) 1);
+        } else {
+            player.getPersistentDataContainer().remove(companionEnabledKey);
+        }
+    }
+
+    /**
      * 取消对插件跟宠猫的右键交互，避免玩家让它坐下、喂食或改名。
      * 只匹配已登记的跟宠，服务器上的普通猫不受影响。
      */
     @EventHandler
     public void onInteractEntity(PlayerInteractEntityEvent event) {
         if (companions.isCompanion(event.getRightClicked())) {
+            event.setCancelled(true);
+            return;
+        }
+        // 只处理主手，避免一次右键触发两次歪头。
+        if (event.getHand() != EquipmentSlot.HAND) {
+            return;
+        }
+        if (companions.playInteractionTilt(event.getRightClicked())) {
             event.setCancelled(true);
         }
     }

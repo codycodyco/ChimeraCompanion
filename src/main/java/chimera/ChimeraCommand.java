@@ -10,13 +10,14 @@ import org.bukkit.entity.Player;
 import java.util.Locale;
 
 /**
- * Handles {@code /chimera summon}, {@code /chimera dismiss}, {@code /chimera bubble},
- * {@code /chimera testtrigger <id>} and {@code /chimera reload}.
+ * Handles {@code /chimera} (summon/dismiss toggle), {@code /chimera bubble},
+ * {@code /chimera testtrigger <id>}, {@code /chimera reload} and {@code /chimera model}.
  */
 public final class ChimeraCommand implements CommandExecutor {
 
     private static final String PREFIX = "[Chimera] ";
     private static final String TEST_BUBBLE = "你好会上班呀～";
+    private static final String USAGE = "用法：/chimera [bubble|testtrigger|reload|model]（直接输入 /chimera 召唤/收回）";
 
     private final CompanionManager companions;
     private final TriggerService triggers;
@@ -35,27 +36,11 @@ public final class ChimeraCommand implements CommandExecutor {
             return true;
         }
         if (args.length == 0) {
-            player.sendMessage(Component.text(PREFIX + "用法：/" + label
-                    + " <summon|dismiss|bubble|testtrigger|reload|model>"));
+            toggleCompanion(player);
             return true;
         }
 
         switch (args[0].toLowerCase(Locale.ROOT)) {
-            case "summon" -> {
-                if (companions.summon(player)) {
-                    player.sendMessage(Component.text(PREFIX + "小奇美拉出现啦～"));
-                } else {
-                    player.sendMessage(Component.text(PREFIX + "你已经有小奇美拉了。"));
-                }
-            }
-            case "dismiss" -> {
-                if (companions.dismiss(player.getUniqueId())) {
-                    triggers.clear(player.getUniqueId());
-                    player.sendMessage(Component.text(PREFIX + "小奇美拉回去休息了。"));
-                } else {
-                    player.sendMessage(Component.text(PREFIX + "你现在没有小奇美拉。"));
-                }
-            }
             case "bubble" -> {
                 if (companions.showBubble(player, TEST_BUBBLE)) {
                     player.sendMessage(Component.text(PREFIX + "小奇美拉冒了个泡泡。"));
@@ -95,9 +80,24 @@ public final class ChimeraCommand implements CommandExecutor {
                     }
                 }
             }
-            default -> player.sendMessage(Component.text(PREFIX + "用法：/" + label
-                    + " <summon|dismiss|bubble|testtrigger|reload|model>"));
+            default -> player.sendMessage(Component.text(PREFIX + USAGE));
         }
         return true;
+    }
+
+    /**
+     * 没有跟宠时召唤，已有跟宠时收回；并同步玩家的自动召唤标记。
+     */
+    private void toggleCompanion(Player player) {
+        if (companions.companionOf(player) != null) {
+            companions.dismiss(player.getUniqueId());
+            triggers.clear(player.getUniqueId());
+            plugin.setCompanionEnabled(player, false);
+            player.sendMessage(Component.text(PREFIX + "小奇美拉回去休息了。"));
+        } else {
+            companions.summon(player);
+            plugin.setCompanionEnabled(player, true);
+            player.sendMessage(Component.text(PREFIX + "小奇美拉出现啦～"));
+        }
     }
 }

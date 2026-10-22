@@ -6,8 +6,8 @@ description: A lightweight companion pet for Paper 26.2
 author: cody
 commands:
   chimera:
-    description: Summon or dismiss your Chimera companion
-    usage: /chimera <summon|dismiss|bubble|testtrigger|reload|model>
+    description: Summon or dismiss your Chimera companion (toggle)
+    usage: /chimera [bubble|testtrigger|reload|model]
 permissions:
   chimera.admin:
     description: Allows reloading the ChimeraCompanion configuration

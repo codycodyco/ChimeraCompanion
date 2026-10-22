@@ -7,10 +7,11 @@ import org.bukkit.Color;
 import org.bukkit.Location;
 import org.bukkit.Material;
 import org.bukkit.NamespacedKey;
-import org.bukkit.Sound;
+import org.bukkit.SoundCategory;
 import org.bukkit.entity.Cat;
 import org.bukkit.entity.Display;
 import org.bukkit.entity.Entity;
+import org.bukkit.entity.Interaction;
 import org.bukkit.entity.ItemDisplay;
 import org.bukkit.entity.Player;
 import org.bukkit.entity.TextDisplay;
@@ -42,10 +43,6 @@ public final class CompanionManager {
     private static final int BUBBLE_TICKS = 80;
     private static final double BUBBLE_HEIGHT = 1.2;
 
-    private static final int SOUND_INTERVAL_MIN_SECONDS = 45;
-    private static final int SOUND_INTERVAL_MAX_SECONDS = 120;
-    private static final float SOUND_VOLUME = 0.6F;
-    private static final float SOUND_PITCH = 1.0F;
 
     /** 连续追赶达到该 tick 数（15 秒）后尝试触发 companion.catch_up。 */
     private static final int CHASE_TRIGGER_TICKS = 15 * 20;
@@ -101,6 +98,19 @@ public final class CompanionManager {
     /** 10 tick 内水平位移超过该值即视为猫在移动（0.1 格 / 10 tick）。 */
     private static final double WALK_EPSILON_SQUARED = 0.01;
 
+    /** 说话歪头的局部 Z 轴角度（度）与持续时间（tick）。 */
+    private static final float HEAD_TILT_ANGLE = 12.0F;
+    private static final int HEAD_TILT_TICKS = 30;
+    /** 右键互动的点击区域尺寸与歪头角度。 */
+    private static final float INTERACTION_WIDTH = 0.65F;
+    private static final float INTERACTION_HEIGHT = 0.9F;
+    private static final float HEAD_CLICK_TILT_ANGLE = 15.0F;
+    /** 靠近玩家时的最大左右/俯仰偏转（度）、检测距离（格）与目标更新阈值（十分之一度）。 */
+    private static final float HEAD_LOOK_LIMIT = 30.0F;
+    private static final float HEAD_PITCH_LIMIT = 25.0F;
+    private static final double HEAD_LOOK_DISTANCE = 3.0;
+    private static final int HEAD_UPDATE_TENTHS = 30;
+
     private List<String> messages;
     private int intervalMinSeconds;
     private int intervalMaxSeconds;
@@ -108,11 +118,14 @@ public final class CompanionManager {
     private final Map<UUID, Cat> companions = new HashMap<>();
     private final Map<UUID, Bubble> bubbles = new HashMap<>();
     private final Map<UUID, Talk> talks = new HashMap<>();
-    private final Map<UUID, Integer> nextSoundTicks = new HashMap<>();
     private final Map<UUID, Chase> chases = new HashMap<>();
     private final Map<UUID, List<ItemDisplay>> models = new HashMap<>();
-    /** 每只跟宠上一次实际应用的头部张望目标索引，避免重复提交相同 Transformation。 */
-    private final Map<UUID, Integer> headLookSteps = new HashMap<>();
+    /** 每只跟宠上一次实际应用的头部目标，避免重复提交相同 Transformation。 */
+    private final Map<UUID, HeadPose> headPoses = new HashMap<>();
+    /** 每只跟宠当前的歪头动画（结束 tick 与角度），说话和右键共用。 */
+    private final Map<UUID, HeadTilt> headTilts = new HashMap<>();
+    /** 每只跟宠的右键点击区域。 */
+    private final Map<UUID, Interaction> interactions = new HashMap<>();
     /** 每只跟宠上一次实际应用的腿部目标（0 静止、1/2 两个步态相位）。 */
     private final Map<UUID, Integer> legSteps = new HashMap<>();
     /** 每只跟宠上一轮的猫位置，用来判断猫是否真的在移动。 */
@@ -126,6 +139,14 @@ public final class CompanionManager {
 
     /** 一轮追赶：startTick 为开始追赶的 tick，attempted 表示本轮已经尝试过触发。 */
     private record Chase(int startTick, boolean attempted) {
+    }
+
+    /** 一次歪头：结束 tick、角度，以及开始时冻结的张望/俯仰角度。 */
+    private record HeadTilt(int endTick, float angle, float lookAngle, float pitchAngle) {
+    }
+
+    /** 已应用的头部目标：左右、俯仰与歪头角度的十分之一。 */
+    private record HeadPose(int lookTenths, int pitchTenths, int tiltTenths) {
     }
 
     public CompanionManager(List<String> messages, int intervalMinSeconds, int intervalMaxSeconds) {
@@ -171,7 +192,6 @@ public final class CompanionManager {
         companions.put(playerId, cat);
         createModel(playerId, cat);
         talks.put(playerId, new Talk(scheduleNext(), -1));
-        nextSoundTicks.put(playerId, scheduleNextSound());
         chases.remove(playerId);
         return true;
     }
@@ -185,7 +205,6 @@ public final class CompanionManager {
         clearBubble(playerId);
         clearModel(playerId);
         talks.remove(playerId);
-        nextSoundTicks.remove(playerId);
         chases.remove(playerId);
         Cat cat = companions.remove(playerId);
         if (cat == null) {
@@ -208,8 +227,13 @@ public final class CompanionManager {
                 display.remove();
             }
         }
+        for (Interaction interaction : interactions.values()) {
+            interaction.remove();
+        }
+        interactions.clear();
         models.clear();
-        headLookSteps.clear();
+        headPoses.clear();
+        headTilts.clear();
         legSteps.clear();
         lastLocations.clear();
         for (Bubble bubble : bubbles.values()) {
@@ -217,7 +241,6 @@ public final class CompanionManager {
         }
         bubbles.clear();
         talks.clear();
-        nextSoundTicks.clear();
         chases.clear();
     }
 
@@ -234,7 +257,13 @@ public final class CompanionManager {
             return false;
         }
         ItemDisplay model = parts.get(0);
-        playSound(model);
+        // 说话语音：由 sounds.json 在 19 段中随机，替换原来的悦灵叫声。
+        model.getWorld().playSound(model.getLocation(), "chimera:speak",
+                SoundCategory.NEUTRAL, 0.8F, 1.0F);
+        // 说话时触发一次歪头；随机台词和行为触发都走这里。
+        UUID tiltPlayerId = player.getUniqueId();
+        headTilts.put(tiltPlayerId, new HeadTilt(Bukkit.getCurrentTick() + HEAD_TILT_TICKS,
+                HEAD_TILT_ANGLE, currentLookAngle(tiltPlayerId), currentPitch(tiltPlayerId)));
         // 头顶气泡和聊天栏使用同一句台词，不重新随机。
         player.sendMessage(Component.text("[说怪话] ", NamedTextColor.LIGHT_PURPLE)
                 .append(Component.text(text, NamedTextColor.WHITE)));
@@ -279,6 +308,25 @@ public final class CompanionManager {
     }
 
     /**
+     * 玩家右键插件管理的 Interaction 时触发一次歪头。
+     *
+     * @return 是否命中了本插件的 Interaction
+     */
+    public boolean playInteractionTilt(Entity entity) {
+        for (Map.Entry<UUID, Interaction> entry : interactions.entrySet()) {
+            if (entry.getValue().getUniqueId().equals(entity.getUniqueId())) {
+                UUID playerId = entry.getKey();
+                entity.getWorld().playSound(entity.getLocation(), "chimera:speak",
+                        SoundCategory.NEUTRAL, 0.8F, 1.0F);
+                headTilts.put(playerId, new HeadTilt(Bukkit.getCurrentTick() + HEAD_TILT_TICKS,
+                        HEAD_CLICK_TILT_ANGLE, currentLookAngle(playerId), currentPitch(playerId)));
+                return true;
+            }
+        }
+        return false;
+    }
+
+    /**
      * Makes the player's companion say a random configured line once its own timer has run out,
      * then schedules the next line.
      */
@@ -315,34 +363,6 @@ public final class CompanionManager {
     }
 
     /**
-     * Plays the allay sound from the companion model once the timer has run out, then schedules the
-     * next play.
-     */
-    public void tickSound(Player player) {
-        UUID playerId = player.getUniqueId();
-        Integer nextTick = nextSoundTicks.get(playerId);
-        if (nextTick == null || Bukkit.getCurrentTick() < nextTick) {
-            return;
-        }
-        playSound(models.get(playerId).get(0));
-        nextSoundTicks.put(playerId, scheduleNextSound());
-    }
-
-    private int scheduleNextSound() {
-        int span = SOUND_INTERVAL_MAX_SECONDS - SOUND_INTERVAL_MIN_SECONDS;
-        int seconds = SOUND_INTERVAL_MIN_SECONDS + ThreadLocalRandom.current().nextInt(span + 1);
-        return Bukkit.getCurrentTick() + seconds * 20;
-    }
-
-    /**
-     * Plays the sound where the companion model currently is, so nearby players hear it.
-     */
-    private static void playSound(ItemDisplay model) {
-        model.getWorld().playSound(model.getLocation(),
-                Sound.ENTITY_ALLAY_AMBIENT_WITHOUT_ITEM, SOUND_VOLUME, SOUND_PITCH);
-    }
-
-    /**
      * 更新玩家的追赶状态：第一次调用只记录起点，之后判断是否已连续追赶 15 秒。
      *
      * @return 本轮追赶达到阈值且尚未尝试过触发时为 {@code true}
@@ -371,7 +391,8 @@ public final class CompanionManager {
      * 为猫创建模型实体，位置与朝向立即与猫对齐。
      */
     private void createModel(UUID playerId, Cat cat) {
-        headLookSteps.remove(playerId);
+        headPoses.remove(playerId);
+        headTilts.remove(playerId);
         legSteps.put(playerId, 0);
         lastLocations.remove(playerId);
         Location at = cat.getLocation().add(0, MODEL_Y_OFFSET, 0);
@@ -395,15 +416,27 @@ public final class CompanionManager {
             parts.add(display);
         }
         models.put(playerId, parts);
+        Interaction interaction = cat.getWorld().spawn(at, Interaction.class, entity -> {
+            entity.setInteractionWidth(INTERACTION_WIDTH);
+            entity.setInteractionHeight(INTERACTION_HEIGHT);
+            entity.setResponsive(true);
+            entity.setPersistent(false);
+        });
+        interactions.put(playerId, interaction);
     }
 
     /**
      * 移除玩家对应的全部模型部件。
      */
     public void clearModel(UUID playerId) {
-        headLookSteps.remove(playerId);
+        headPoses.remove(playerId);
+        headTilts.remove(playerId);
         legSteps.remove(playerId);
         lastLocations.remove(playerId);
+        Interaction interaction = interactions.remove(playerId);
+        if (interaction != null) {
+            interaction.remove();
+        }
         List<ItemDisplay> parts = models.remove(playerId);
         if (parts == null) {
             return;
@@ -438,12 +471,40 @@ public final class CompanionManager {
         Location target = catLocation.clone().add(0, MODEL_Y_OFFSET, 0);
         target.setYaw(cat.getBodyYaw());
         target.setPitch(0.0F);
-        // 固定 0° / +15° / -15°，每 20 tick 一个目标；只在目标索引变化时才写头部 Transformation。
-        int lookStep = (int) ((Bukkit.getCurrentTick() / HEAD_STEP_TICKS) % HEAD_LOOK_ANGLES.length);
-        Integer lastStep = headLookSteps.get(playerId);
-        boolean headStepChanged = lastStep == null || lastStep != lookStep;
-        if (headStepChanged) {
-            headLookSteps.put(playerId, lookStep);
+        Interaction interaction = interactions.get(playerId);
+        if (interaction != null) {
+            interaction.teleport(target);
+        }
+        // 优先级：歪头 > 注视 3 格内最近的玩家 > 随机张望。
+        long tick = Bukkit.getCurrentTick();
+        HeadTilt tilt = headTilts.get(playerId);
+        boolean tilting = tilt != null && tick < tilt.endTick();
+        float tiltAngle = tilting ? tilt.angle() : 0.0F;
+        float lookAngle;
+        float pitchAngle;
+        if (tilting) {
+            lookAngle = tilt.lookAngle();
+            pitchAngle = tilt.pitchAngle();
+        } else {
+            Player lookedAt = nearestPlayer(cat);
+            if (lookedAt != null) {
+                lookAngle = lookAngleTo(cat, lookedAt);
+                pitchAngle = pitchAngleTo(cat, lookedAt);
+            } else {
+                int lookStep = (int) ((tick / HEAD_STEP_TICKS) % HEAD_LOOK_ANGLES.length);
+                lookAngle = HEAD_LOOK_ANGLES[lookStep];
+                pitchAngle = 0.0F;
+            }
+        }
+        HeadPose pose = new HeadPose(Math.round(lookAngle * 10.0F),
+                Math.round(pitchAngle * 10.0F), Math.round(tiltAngle * 10.0F));
+        HeadPose lastPose = headPoses.get(playerId);
+        boolean headPoseChanged = lastPose == null
+                || pose.tiltTenths() != lastPose.tiltTenths()
+                || Math.abs(pose.lookTenths() - lastPose.lookTenths()) >= HEAD_UPDATE_TENTHS
+                || Math.abs(pose.pitchTenths() - lastPose.pitchTenths()) >= HEAD_UPDATE_TENTHS;
+        if (headPoseChanged) {
+            headPoses.put(playerId, pose);
         }
         // 行走时按对角步态在两个相位之间切换；停下时目标回到 0。
         int legStep = moving ? (int) ((Bukkit.getCurrentTick() / FollowTask.PERIOD_TICKS) % 2) + 1 : 0;
@@ -452,12 +513,12 @@ public final class CompanionManager {
         if (legStepChanged) {
             legSteps.put(playerId, legStep);
         }
-        Transformation head = headTransformation(MODEL_SCALE, HEAD_LOOK_ANGLES[lookStep]);
+        Transformation head = headTransformation(MODEL_SCALE, lookAngle, pitchAngle, tiltAngle);
         for (int i = 0; i < parts.size(); i++) {
             ItemDisplay display = parts.get(i);
             display.teleport(target);
             String part = MODEL_PARTS.get(i);
-            if (headStepChanged && "head".equals(part)) {
+            if (headPoseChanged && "head".equals(part)) {
                 display.setTransformation(head);
                 display.setInterpolationDelay(0);
                 display.setInterpolationDuration((int) FollowTask.PERIOD_TICKS);
@@ -497,8 +558,13 @@ public final class CompanionManager {
      * p 旋转 R，右旋转用 R，平移取 R_left · S · (p - R·p)；这样 θ = 0 时与原基础
      * 变换完全一致，也不会在上一帧的变换上累积旋转。
      */
-    static Transformation headTransformation(float scale, float headAngle) {
-        Quaternionf headRotation = new Quaternionf().rotateY((float) Math.toRadians(headAngle));
+    static Transformation headTransformation(float scale, float headAngle, float pitchAngle, float tiltAngle) {
+        // yaw 用 Minecraft 的相对角度（顺时针，JOML 逆时针所以取负）；
+        // 俯仰为正表示抬头，JOML 的 rotateX 正角是低头，因此也取负。
+        Quaternionf headRotation = new Quaternionf()
+                .rotateY((float) Math.toRadians(-headAngle))
+                .rotateX((float) Math.toRadians(-pitchAngle))
+                .rotateZ((float) Math.toRadians(tiltAngle));
         Vector3f pivot = new Vector3f(0.0F, 0.0F, HEAD_PIVOT_Z);
         Vector3f translation = pivot.sub(headRotation.transform(new Vector3f(pivot))).mul(scale);
         return new Transformation(
@@ -597,6 +663,84 @@ public final class CompanionManager {
 
     private static Location bubbleLocation(ItemDisplay model) {
         return model.getLocation().add(0, BUBBLE_HEIGHT, 0);
+    }
+
+    /**
+     * 找出猫 3 格范围内最近的在线玩家。
+     */
+    private static Player nearestPlayer(Cat cat) {
+        Location catLocation = cat.getLocation();
+        double maxSquared = HEAD_LOOK_DISTANCE * HEAD_LOOK_DISTANCE;
+        double nearestSquared = Double.MAX_VALUE;
+        Player nearest = null;
+        for (Entity entity : cat.getWorld().getNearbyEntities(catLocation,
+                HEAD_LOOK_DISTANCE, HEAD_LOOK_DISTANCE, HEAD_LOOK_DISTANCE)) {
+            if (!(entity instanceof Player player)) {
+                continue;
+            }
+            double distanceSquared = player.getLocation().distanceSquared(catLocation);
+            if (distanceSquared <= maxSquared && distanceSquared < nearestSquared) {
+                nearestSquared = distanceSquared;
+                nearest = player;
+            }
+        }
+        return nearest;
+    }
+
+    /**
+     * 玩家相对猫身体朝向的头部 Y 轴角度，限制在 ±30°。
+     */
+    private static float lookAngleTo(Cat cat, Player player) {
+        double dx = player.getX() - cat.getX();
+        double dz = player.getZ() - cat.getZ();
+        float targetYaw = (float) Math.toDegrees(Math.atan2(-dx, dz));
+        float relative = normalizeDegrees(targetYaw - cat.getBodyYaw());
+        return Math.max(-HEAD_LOOK_LIMIT, Math.min(HEAD_LOOK_LIMIT, relative));
+    }
+
+    /**
+     * 玩家眼睛相对头部关节的俯仰角，抬头为正，限制在 ±25°。
+     */
+    private static float pitchAngleTo(Cat cat, Player player) {
+        Location origin = headOrigin(cat);
+        Location eye = player.getEyeLocation();
+        double dx = eye.getX() - origin.getX();
+        double dy = eye.getY() - origin.getY();
+        double dz = eye.getZ() - origin.getZ();
+        float pitch = (float) Math.toDegrees(Math.atan2(dy, Math.sqrt(dx * dx + dz * dz)));
+        return Math.max(-HEAD_PITCH_LIMIT, Math.min(HEAD_PITCH_LIMIT, pitch));
+    }
+
+    /**
+     * 头部关节在世界中的实际位置：模型位置 + 缩放后的关节原点按身体朝向旋转。
+     */
+    private static Location headOrigin(Cat cat) {
+        double yaw = Math.toRadians(cat.getBodyYaw());
+        double pivotZ = MODEL_SCALE * HEAD_PIVOT_Z;
+        return new Location(cat.getWorld(),
+                cat.getX() - pivotZ * Math.sin(yaw),
+                cat.getY() + MODEL_Y_OFFSET,
+                cat.getZ() + pivotZ * Math.cos(yaw));
+    }
+
+    private static float normalizeDegrees(float degrees) {
+        float wrapped = degrees % 360.0F;
+        if (wrapped >= 180.0F) {
+            wrapped -= 360.0F;
+        } else if (wrapped < -180.0F) {
+            wrapped += 360.0F;
+        }
+        return wrapped;
+    }
+
+    private float currentLookAngle(UUID playerId) {
+        HeadPose pose = headPoses.get(playerId);
+        return pose == null ? 0.0F : pose.lookTenths() / 10.0F;
+    }
+
+    private float currentPitch(UUID playerId) {
+        HeadPose pose = headPoses.get(playerId);
+        return pose == null ? 0.0F : pose.pitchTenths() / 10.0F;
     }
 
     /**

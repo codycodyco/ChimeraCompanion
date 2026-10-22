@@ -1,0 +1,63 @@
+{
+  "speak": {
+    "sounds": [
+      {
+        "name": "chimera:speak/1-1"
+      },
+      {
+        "name": "chimera:speak/2-1"
+      },
+      {
+        "name": "chimera:speak/3-1"
+      },
+      {
+        "name": "chimera:speak/4-1"
+      },
+      {
+        "name": "chimera:speak/5-1"
+      },
+      {
+        "name": "chimera:speak/6-1"
+      },
+      {
+        "name": "chimera:speak/7-1"
+      },
+      {
+        "name": "chimera:speak/8-1"
+      },
+      {
+        "name": "chimera:speak/9-1"
+      },
+      {
+        "name": "chimera:speak/10-1"
+      },
+      {
+        "name": "chimera:speak/11-1"
+      },
+      {
+        "name": "chimera:speak/12-1"
+      },
+      {
+        "name": "chimera:speak/13-1"
+      },
+      {
+        "name": "chimera:speak/14-1"
+      },
+      {
+        "name": "chimera:speak/15-1"
+      },
+      {
+        "name": "chimera:speak/16-1"
+      },
+      {
+        "name": "chimera:speak/17-1"
+      },
+      {
+        "name": "chimera:speak/18-1"
+      },
+      {
+        "name": "chimera:speak/19-1"
+      }
+    ]
+  }
+}
