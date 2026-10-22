@@ -7,4 +7,4 @@ author: cody
 commands:
   chimera:
     description: Summon or dismiss your Chimera companion
-    usage: /chimera <summon|dismiss>
+    usage: /chimera <summon|dismiss|bubble>

@@ -9,7 +9,7 @@ import org.bukkit.entity.Player;
 import java.util.Locale;
 
 /**
- * Handles {@code /chimera summon} and {@code /chimera dismiss}.
+ * Handles {@code /chimera summon}, {@code /chimera dismiss} and {@code /chimera bubble}.
  */
 public final class ChimeraCommand implements CommandExecutor {
 
@@ -28,7 +28,7 @@ public final class ChimeraCommand implements CommandExecutor {
             return true;
         }
         if (args.length != 1) {
-            player.sendMessage(Component.text(PREFIX + "用法：/" + label + " <summon|dismiss>"));
+            player.sendMessage(Component.text(PREFIX + "用法：/" + label + " <summon|dismiss|bubble>"));
             return true;
         }
 
@@ -47,7 +47,14 @@ public final class ChimeraCommand implements CommandExecutor {
                     player.sendMessage(Component.text(PREFIX + "你现在没有小奇美拉。"));
                 }
             }
-            default -> player.sendMessage(Component.text(PREFIX + "用法：/" + label + " <summon|dismiss>"));
+            case "bubble" -> {
+                if (companions.showBubble(player)) {
+                    player.sendMessage(Component.text(PREFIX + "小奇美拉冒了个泡泡。"));
+                } else {
+                    player.sendMessage(Component.text(PREFIX + "先召唤小奇美拉吧。"));
+                }
+            }
+            default -> player.sendMessage(Component.text(PREFIX + "用法：/" + label + " <summon|dismiss|bubble>"));
         }
         return true;
     }

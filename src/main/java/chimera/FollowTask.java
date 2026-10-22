@@ -6,6 +6,8 @@ import org.bukkit.entity.Allay;
 import org.bukkit.entity.Player;
 import org.bukkit.scheduler.BukkitRunnable;
 
+import java.util.UUID;
+
 /**
  * Keeps every companion near its owner.
  *
@@ -33,9 +35,18 @@ public final class FollowTask extends BukkitRunnable {
     public void run() {
         for (Player player : Bukkit.getOnlinePlayers()) {
             Allay companion = companions.companionOf(player);
-            if (companion == null || !companion.isValid()) {
+            if (companion == null) {
                 continue;
             }
+            UUID playerId = player.getUniqueId();
+            if (!companion.isValid()) {
+                companions.clearBubble(playerId);
+                continue;
+            }
+
+            // Keep an active bubble glued to the companion and drop it once it expires.
+            companions.tickBubble(playerId, companion);
+
             // Dead owners leave the companion frozen where it is until the respawn event moves it.
             if (player.getHealth() <= 0.0D) {
                 continue;
@@ -43,6 +54,7 @@ public final class FollowTask extends BukkitRunnable {
 
             // The companion lives in another world, so it has to be moved over instead of walked.
             if (!player.getWorld().equals(companion.getWorld())) {
+                companions.clearBubble(playerId);
                 companion.getPathfinder().stopPathfinding();
                 companion.teleport(CompanionManager.behind(player.getLocation()));
                 continue;
