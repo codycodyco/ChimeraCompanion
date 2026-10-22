@@ -22,13 +22,20 @@ public final class TriggerService {
 
     private final JavaPlugin plugin;
     private final CompanionManager companions;
-    private final long cooldownTicks;
+    private long cooldownTicks;
     private final Map<UUID, Long> lastTriggerTicks = new HashMap<>();
 
     public TriggerService(JavaPlugin plugin, CompanionManager companions) {
         this.plugin = plugin;
         this.companions = companions;
-        this.cooldownTicks = plugin.getConfig().getLong("triggers.cooldown-seconds", 60L) * 20L;
+        reload();
+    }
+
+    /**
+     * Re-reads the trigger cooldown, used both at startup and when the config is reloaded.
+     */
+    public void reload() {
+        cooldownTicks = plugin.getConfig().getLong("triggers.cooldown-seconds", 60L) * 20L;
     }
 
     /**

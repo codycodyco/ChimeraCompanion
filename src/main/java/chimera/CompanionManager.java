@@ -36,9 +36,9 @@ public final class CompanionManager {
     private static final float SOUND_VOLUME = 0.6F;
     private static final float SOUND_PITCH = 1.0F;
 
-    private final List<String> messages;
-    private final int intervalMinSeconds;
-    private final int intervalMaxSeconds;
+    private List<String> messages;
+    private int intervalMinSeconds;
+    private int intervalMaxSeconds;
 
     private final Map<UUID, Allay> companions = new HashMap<>();
     private final Map<UUID, Bubble> bubbles = new HashMap<>();
@@ -52,6 +52,13 @@ public final class CompanionManager {
     }
 
     public CompanionManager(List<String> messages, int intervalMinSeconds, int intervalMaxSeconds) {
+        reload(messages, intervalMinSeconds, intervalMaxSeconds);
+    }
+
+    /**
+     * Replaces the dialogue settings, used both at startup and when the config is reloaded.
+     */
+    public void reload(List<String> messages, int intervalMinSeconds, int intervalMaxSeconds) {
         this.messages = messages;
         // Keep a usable range even when the config was edited into an invalid state.
         this.intervalMinSeconds = Math.max(1, intervalMinSeconds);

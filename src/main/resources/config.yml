@@ -22,3 +22,8 @@ triggers:
     fall:
       messages:
         - "老板好喜欢地面呢～"
+    lava:
+      messages:
+        - "老板是在泡温泉吗～"
+        - "这个温度还满意吗～"
+        - "老板真会享受生活呢～"

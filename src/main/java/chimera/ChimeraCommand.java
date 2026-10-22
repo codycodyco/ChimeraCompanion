@@ -10,8 +10,8 @@ import org.bukkit.entity.Player;
 import java.util.Locale;
 
 /**
- * Handles {@code /chimera summon}, {@code /chimera dismiss}, {@code /chimera bubble} and
- * {@code /chimera testtrigger <id>}.
+ * Handles {@code /chimera summon}, {@code /chimera dismiss}, {@code /chimera bubble},
+ * {@code /chimera testtrigger <id>} and {@code /chimera reload}.
  */
 public final class ChimeraCommand implements CommandExecutor {
 
@@ -20,10 +20,12 @@ public final class ChimeraCommand implements CommandExecutor {
 
     private final CompanionManager companions;
     private final TriggerService triggers;
+    private final ChimeraCompanionPlugin plugin;
 
-    public ChimeraCommand(CompanionManager companions, TriggerService triggers) {
+    public ChimeraCommand(CompanionManager companions, TriggerService triggers, ChimeraCompanionPlugin plugin) {
         this.companions = companions;
         this.triggers = triggers;
+        this.plugin = plugin;
     }
 
     @Override
@@ -34,7 +36,7 @@ public final class ChimeraCommand implements CommandExecutor {
         }
         if (args.length == 0) {
             player.sendMessage(Component.text(PREFIX + "用法：/" + label
-                    + " <summon|dismiss|bubble|testtrigger <id>>"));
+                    + " <summon|dismiss|bubble|testtrigger|reload>"));
             return true;
         }
 
@@ -68,8 +70,16 @@ public final class ChimeraCommand implements CommandExecutor {
                     player.sendMessage(Component.text(PREFIX + "用法：/" + label + " testtrigger <id>"));
                 }
             }
+            case "reload" -> {
+                if (player.hasPermission("chimera.admin")) {
+                    plugin.reloadCompanionConfig();
+                    player.sendMessage(Component.text(PREFIX + "配置已重新加载。"));
+                } else {
+                    player.sendMessage(Component.text(PREFIX + "你没有权限执行该指令。"));
+                }
+            }
             default -> player.sendMessage(Component.text(PREFIX + "用法：/" + label
-                    + " <summon|dismiss|bubble|testtrigger <id>>"));
+                    + " <summon|dismiss|bubble|testtrigger|reload>"));
         }
         return true;
     }
