@@ -1,4 +1,7 @@
-# Seconds between two random lines of a companion, picked randomly from this range.
+# ---------- 随机台词 ----------
+# 每只已召唤的跟宠每隔 interval-min～interval-max 秒随机说一句 messages 中的台词。
+# messages 有多句时会避免连续重复上一句；留空则不再随机说话。
+# 实际间隔在 60～180 秒之间随机。
 dialogue:
   interval-min: 60
   interval-max: 180
@@ -9,15 +12,23 @@ dialogue:
     - "走这么快，是在躲我吗～"
     - "又挖矿呀，真拼呢～"
 
-# Lines shown for behaviour triggers, addressed by id (for example mining.diamond).
-# Every normal trigger shares the same per-player cooldown.
+# ---------- 行为触发台词 ----------
+# 事件 ID 与配置路径的对应关系：事件 ID "mining.valuable" -> triggers.mining.valuable.messages
+# 所有普通行为共享同一个玩家级冷却（单位：秒）；冷却期内触发的台词会被直接忽略，不排队。
 triggers:
   cooldown-seconds: 60
+
+  # 判定：玩家挖掉一块贵重矿石。
+  # 计入：铁、金、红石、青金石、钻石、绿宝石矿石（含深板岩变种）、下界金矿、远古残骸。
+  # 不计入：铜矿、煤矿、下界石英。
   mining:
-    diamond:
+    valuable:
       messages:
         - "老板运气真好呢～"
         - "今天也很努力呀～"
+
+  # 判定：玩家死亡，且死因匹配对应分类。台词在玩家复活后显示，死亡界面期间不显示。
+  # 目前接入：fall（摔死）、lava（岩浆）、drown（溺水）、mob（被怪物击杀）。
   death:
     fall:
       messages:
@@ -27,3 +38,54 @@ triggers:
         - "老板是在泡温泉吗～"
         - "这个温度还满意吗～"
         - "老板真会享受生活呢～"
+    drown:
+      messages:
+        - "老板是在练习潜水吗～"
+        - "老板好喜欢水呢～"
+        - "老板的呼吸方式真特别呀～"
+        - "这次游泳也很成功呢～"
+    mob:
+      messages:
+        - "老板交到新朋友啦～"
+        - "老板的战斗方式真特别呢～"
+        - "老板又输给小动物啦～"
+        - "老板真的很受欢迎呢～"
+
+  # 判定：玩家的生存类行为。
+  survival:
+    # 工具耐久耗尽而损坏：镐、斧、锹、锄、剑、剪刀、钓鱼竿；
+    # 盔甲、鞘翅、弓、弩、打火石、重锤、三叉戟都不算。
+    tool_break:
+      messages:
+        - "老板真会爱惜工具呢～"
+        - "又要换新的啦～"
+        - "老板用得真彻底呀～"
+        - "这把工具也辛苦了呢～"
+    # 玩家完成一次进食：只认原版食物；喝药水、牛奶不会触发。
+    eat:
+      messages:
+        - "老板真能吃呢～"
+        - "又饿啦～"
+        - "老板胃口真好呀～"
+        - "吃得真香呢～"
+        - "老板真会享受生活呀～"
+    # 玩家连续 5 分钟没有任何操作时触发；同一次连续挂机只提醒一次，恢复活动后可再次触发。
+    idle:
+      messages:
+        - "老板真会休息呢～"
+        - "老板还在吗～"
+        - "一动不动也很厉害呢～"
+        - "今天也在认真摸鱼呢～"
+
+  # 判定：跟宠追赶主人。
+  # 触发时机：① 跟宠因距离过远（或跨世界）实际传送到主人身边时；
+  #           ② 连续处于追赶状态超过 15 秒时。
+  # 连续追赶计时期间最多尝试一次；追上主人、停止追赶或完成传送后重新计时。
+  companion:
+    catch_up:
+      messages:
+        - "老板跑这么快干什么呀～"
+        - "老板等等我呀～"
+        - "老板真有活力呢～"
+        - "真会折腾小动物呢～"
+        - "终于追上老板啦～"

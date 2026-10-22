@@ -36,6 +36,9 @@ public final class CompanionManager {
     private static final float SOUND_VOLUME = 0.6F;
     private static final float SOUND_PITCH = 1.0F;
 
+    /** 连续追赶达到该 tick 数（15 秒）后尝试触发 companion.catch_up。 */
+    private static final int CHASE_TRIGGER_TICKS = 15 * 20;
+
     private List<String> messages;
     private int intervalMinSeconds;
     private int intervalMaxSeconds;
@@ -44,11 +47,16 @@ public final class CompanionManager {
     private final Map<UUID, Bubble> bubbles = new HashMap<>();
     private final Map<UUID, Talk> talks = new HashMap<>();
     private final Map<UUID, Integer> nextSoundTicks = new HashMap<>();
+    private final Map<UUID, Chase> chases = new HashMap<>();
 
     private record Bubble(TextDisplay display, int expiresAtTick) {
     }
 
     private record Talk(int nextSpeakTick, int lastIndex) {
+    }
+
+    /** 一轮追赶：startTick 为开始追赶的 tick，attempted 表示本轮已经尝试过触发。 */
+    private record Chase(int startTick, boolean attempted) {
     }
 
     public CompanionManager(List<String> messages, int intervalMinSeconds, int intervalMaxSeconds) {
@@ -92,6 +100,7 @@ public final class CompanionManager {
         companions.put(playerId, allay);
         talks.put(playerId, new Talk(scheduleNext(), -1));
         nextSoundTicks.put(playerId, scheduleNextSound());
+        chases.remove(playerId);
         return true;
     }
 
@@ -104,6 +113,7 @@ public final class CompanionManager {
         clearBubble(playerId);
         talks.remove(playerId);
         nextSoundTicks.remove(playerId);
+        chases.remove(playerId);
         Allay allay = companions.remove(playerId);
         if (allay == null) {
             return false;
@@ -126,6 +136,7 @@ public final class CompanionManager {
         bubbles.clear();
         talks.clear();
         nextSoundTicks.clear();
+        chases.clear();
     }
 
     /**
@@ -240,6 +251,31 @@ public final class CompanionManager {
     private static void playSound(Allay companion) {
         companion.getWorld().playSound(companion.getLocation(),
                 Sound.ENTITY_ALLAY_AMBIENT_WITHOUT_ITEM, SOUND_VOLUME, SOUND_PITCH);
+    }
+
+    /**
+     * 更新玩家的追赶状态：第一次调用只记录起点，之后判断是否已连续追赶 15 秒。
+     *
+     * @return 本轮追赶达到阈值且尚未尝试过触发时为 {@code true}
+     */
+    public boolean tickChase(UUID playerId, int nowTick) {
+        Chase chase = chases.get(playerId);
+        if (chase == null) {
+            chases.put(playerId, new Chase(nowTick, false));
+            return false;
+        }
+        if (chase.attempted() || nowTick - chase.startTick() < CHASE_TRIGGER_TICKS) {
+            return false;
+        }
+        chases.put(playerId, new Chase(chase.startTick(), true));
+        return true;
+    }
+
+    /**
+     * 清除追赶状态：追上主人、停止追赶、完成传送或跟宠移除时调用。
+     */
+    public void clearChase(UUID playerId) {
+        chases.remove(playerId);
     }
 
     /**

@@ -1,5 +1,6 @@
 package chimera;
 
+import chimera.trigger.TriggerService;
 import com.destroystokyo.paper.entity.Pathfinder;
 import org.bukkit.Bukkit;
 import org.bukkit.entity.Allay;
@@ -16,6 +17,9 @@ import java.util.UUID;
  * behind the owner, and teleporting there. A companion in a different world than its owner is
  * teleported over, and dead owners are skipped because their companion is frozen in place by the
  * death listener.
+ *
+ * <p>When a companion is teleported back to its owner, or keeps chasing for too long, the
+ * {@code companion.catch_up} trigger is attempted once per chase.
  */
 public final class FollowTask extends BukkitRunnable {
 
@@ -26,9 +30,11 @@ public final class FollowTask extends BukkitRunnable {
     private static final double PATH_SPEED = 1.2;
 
     private final CompanionManager companions;
+    private final TriggerService triggers;
 
-    public FollowTask(CompanionManager companions) {
+    public FollowTask(CompanionManager companions, TriggerService triggers) {
         this.companions = companions;
+        this.triggers = triggers;
     }
 
     @Override
@@ -59,6 +65,8 @@ public final class FollowTask extends BukkitRunnable {
                 companions.clearBubble(playerId);
                 companion.getPathfinder().stopPathfinding();
                 companion.teleport(CompanionManager.behind(player.getLocation()));
+                companions.clearChase(playerId);
+                triggers.showTrigger(player, "companion.catch_up");
                 continue;
             }
 
@@ -69,10 +77,16 @@ public final class FollowTask extends BukkitRunnable {
                 // Drop the old path first, otherwise the allay keeps walking back to where it was.
                 pathfinder.stopPathfinding();
                 companion.teleport(CompanionManager.behind(player.getLocation()));
+                companions.clearChase(playerId);
+                triggers.showTrigger(player, "companion.catch_up");
             } else if (distance < STOP_DISTANCE) {
                 pathfinder.stopPathfinding();
+                companions.clearChase(playerId);
             } else {
                 pathfinder.moveTo(CompanionManager.behind(player.getLocation()), PATH_SPEED);
+                if (companions.tickChase(playerId, Bukkit.getCurrentTick())) {
+                    triggers.showTrigger(player, "companion.catch_up");
+                }
             }
         }
     }
