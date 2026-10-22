@@ -1,0 +1,146 @@
+{
+  "comment": "Generated from user-edited ChimeraCompanion bbmodel; coordinates and UVs retained.",
+  "ambientocclusion": true,
+  "textures": {
+    "0": "chimera:item/chimera_companion_palette",
+    "particle": "chimera:item/chimera_companion_palette"
+  },
+  "elements": [
+    {
+      "from": [
+        4.05,
+        0,
+        11.15
+      ],
+      "to": [
+        6.61,
+        0.85,
+        14.05
+      ],
+      "faces": {
+        "north": {
+          "uv": [
+            10.375,
+            0.375,
+            11.625,
+            1.625
+          ],
+          "texture": "#0"
+        },
+        "east": {
+          "uv": [
+            10.375,
+            0.375,
+            11.625,
+            1.625
+          ],
+          "texture": "#0"
+        },
+        "south": {
+          "uv": [
+            10.375,
+            0.375,
+            11.625,
+            1.625
+          ],
+          "texture": "#0"
+        },
+        "west": {
+          "uv": [
+            10.375,
+            0.375,
+            11.625,
+            1.625
+          ],
+          "texture": "#0"
+        },
+        "up": {
+          "uv": [
+            6.375,
+            0.375,
+            7.625,
+            1.625
+          ],
+          "texture": "#0"
+        },
+        "down": {
+          "uv": [
+            8.375,
+            0.375,
+            9.625,
+            1.625
+          ],
+          "texture": "#0"
+        }
+      }
+    },
+    {
+      "from": [
+        5.22,
+        0.13,
+        11.11
+      ],
+      "to": [
+        5.44,
+        0.43,
+        11.16
+      ],
+      "faces": {
+        "north": {
+          "uv": [
+            8.375,
+            0.375,
+            9.625,
+            1.625
+          ],
+          "texture": "#0"
+        },
+        "east": {
+          "uv": [
+            8.375,
+            0.375,
+            9.625,
+            1.625
+          ],
+          "texture": "#0"
+        },
+        "south": {
+          "uv": [
+            8.375,
+            0.375,
+            9.625,
+            1.625
+          ],
+          "texture": "#0"
+        },
+        "west": {
+          "uv": [
+            8.375,
+            0.375,
+            9.625,
+            1.625
+          ],
+          "texture": "#0"
+        },
+        "up": {
+          "uv": [
+            8.375,
+            0.375,
+            9.625,
+            1.625
+          ],
+          "texture": "#0"
+        },
+        "down": {
+          "uv": [
+            8.375,
+            0.375,
+            9.625,
+            1.625
+          ],
+          "texture": "#0"
+        }
+      }
+    }
+  ]
+}

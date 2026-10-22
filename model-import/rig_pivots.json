@@ -1,0 +1,113 @@
+{
+  "source": "ChimeraCompanion_Editable (1).bbmodel",
+  "minecraft_version": "Java 26.2",
+  "item_display_mode": "FIXED",
+  "mesh_alignment": "All 6 ItemDisplays share identical world position, yaw, item display mode and base transform when rotations are zero. Parts are authored in the same source model coordinates.",
+  "bone_transform_note": "Local pivot positions are (bbmodel pivot - [8,8,8]) / 16 in block units, BEFORE any applied item display transform. When rotating, translation around pivot must be p - R*p (in local space), combined with the existing base translation; ensure model display scale is applied consistently.",
+  "parts": {
+    "body": {
+      "model_id": "chimera:body",
+      "element_count": 19,
+      "groups_merged": [
+        "body",
+        "tail",
+        "bell"
+      ],
+      "pivot_bb_pixels": [
+        8,
+        6,
+        10
+      ],
+      "pivot_local_blocks": [
+        0.0,
+        -0.125,
+        0.125
+      ]
+    },
+    "head": {
+      "model_id": "chimera:head",
+      "element_count": 42,
+      "groups_merged": [
+        "head"
+      ],
+      "pivot_bb_pixels": [
+        8,
+        8,
+        6
+      ],
+      "pivot_local_blocks": [
+        0.0,
+        0.0,
+        -0.125
+      ]
+    },
+    "front_left_leg": {
+      "model_id": "chimera:front_left_leg",
+      "element_count": 3,
+      "groups_merged": [
+        "front_left_leg"
+      ],
+      "pivot_bb_pixels": [
+        5.1,
+        4,
+        6.3
+      ],
+      "pivot_local_blocks": [
+        -0.18125,
+        -0.25,
+        -0.10625
+      ]
+    },
+    "front_right_leg": {
+      "model_id": "chimera:front_right_leg",
+      "element_count": 3,
+      "groups_merged": [
+        "front_right_leg"
+      ],
+      "pivot_bb_pixels": [
+        10.9,
+        4,
+        6.3
+      ],
+      "pivot_local_blocks": [
+        0.18125,
+        -0.25,
+        -0.10625
+      ]
+    },
+    "back_left_leg": {
+      "model_id": "chimera:back_left_leg",
+      "element_count": 2,
+      "groups_merged": [
+        "back_left_leg"
+      ],
+      "pivot_bb_pixels": [
+        5.1,
+        4.2,
+        13
+      ],
+      "pivot_local_blocks": [
+        -0.18125,
+        -0.2375,
+        0.3125
+      ]
+    },
+    "back_right_leg": {
+      "model_id": "chimera:back_right_leg",
+      "element_count": 3,
+      "groups_merged": [
+        "back_right_leg"
+      ],
+      "pivot_bb_pixels": [
+        10.9,
+        4.2,
+        13
+      ],
+      "pivot_local_blocks": [
+        0.18125,
+        -0.2375,
+        0.3125
+      ]
+    }
+  }
+}

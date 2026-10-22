@@ -14,6 +14,7 @@ import org.bukkit.event.EventPriority;
 import org.bukkit.event.Listener;
 import org.bukkit.event.block.BlockBreakEvent;
 import org.bukkit.event.entity.PlayerDeathEvent;
+import org.bukkit.event.player.PlayerInteractEntityEvent;
 import org.bukkit.event.player.PlayerItemConsumeEvent;
 import org.bukkit.event.player.PlayerItemBreakEvent;
 import org.bukkit.event.player.PlayerQuitEvent;
@@ -133,6 +134,17 @@ public final class ChimeraCompanionPlugin extends JavaPlugin implements Listener
         ItemDisplay testModel = testModels.remove(playerId);
         if (testModel != null) {
             testModel.remove();
+        }
+    }
+
+    /**
+     * 取消对插件跟宠猫的右键交互，避免玩家让它坐下、喂食或改名。
+     * 只匹配已登记的跟宠，服务器上的普通猫不受影响。
+     */
+    @EventHandler
+    public void onInteractEntity(PlayerInteractEntityEvent event) {
+        if (companions.isCompanion(event.getRightClicked())) {
+            event.setCancelled(true);
         }
     }
 

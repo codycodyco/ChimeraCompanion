@@ -10,6 +10,7 @@ import org.bukkit.NamespacedKey;
 import org.bukkit.Sound;
 import org.bukkit.entity.Cat;
 import org.bukkit.entity.Display;
+import org.bukkit.entity.Entity;
 import org.bukkit.entity.ItemDisplay;
 import org.bukkit.entity.Player;
 import org.bukkit.entity.TextDisplay;
@@ -19,6 +20,7 @@ import org.bukkit.util.Transformation;
 import org.joml.Quaternionf;
 import org.joml.Vector3f;
 
+import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -50,15 +52,41 @@ public final class CompanionManager {
 
     /** 绑定在猫身上的模型缩放；猫高约 0.7 格，模型原始高约 1.13 格。 */
     private static final float MODEL_SCALE = 0.7F;
-    /** 模型朝向相对猫的水平朝向的固定偏移（度），实测模型正面方向后可调。 */
+    /**
+     * 模型正面相对 Minecraft yaw 0 的固定偏移（度）。
+     *
+     * <p>实测当前模型在本地坐标下正面朝 +Z，与 Minecraft yaw 0 一致，因此偏移为 0。
+     * 若以后换模型方向不同，只调这个常量即可（180 为完全反向）。
+     */
     private static final float MODEL_YAW_OFFSET = 0.0F;
-    /** 模型相对猫脚底的高度偏移。 */
-    private static final double MODEL_Y_OFFSET = 0.0;
-    /** 模型包围盒中心的水平坐标（格），用于把模型对齐到猫的位置。 */
-    private static final float MODEL_CENTER_X = 0.5F;
-    private static final float MODEL_CENTER_Z = 0.632F;
+    /**
+     * 模型相对猫脚底的高度偏移。
+     *
+     * <p>ItemDisplay 以「模型中心」作为变换枢轴，而模型的脚底在本地 y=0，
+     * 两者相差约 0.564 格；缩放 0.7 后脚底落在显示位置下方约 0.4 格。
+     * 不补这段高度，模型就会沉入地面。
+     */
+    private static final double MODEL_Y_OFFSET = 0.4;
     /** 模型包围盒中心的高度（格），仅静态测试命令用来让模型居中。 */
     static final float MODEL_CENTER_Y = 0.564F;
+
+    /** 组成完整模型的六个部件；它们共用同一套根位置、缩放和变换。body 同时作为气泡/音效定位点。 */
+    private static final List<String> MODEL_PARTS = List.of(
+            "body",
+            "head",
+            "front_left_leg",
+            "front_right_leg",
+            "back_left_leg",
+            "back_right_leg");
+
+    /** 头部关节原点的 Z 坐标（模型局部坐标，单位格），来自 rig_pivots.json 的 head.pivot_local_blocks。 */
+    private static final float HEAD_PIVOT_Z = -0.125F;
+    /** 头部相对身体的最大左右旋转角度（度）。 */
+    private static final float HEAD_MAX_ANGLE = 15.0F;
+    /** 待机张望的固定目标角度，每 HEAD_STEP_TICKS tick 切换一次。 */
+    private static final float[] HEAD_LOOK_ANGLES = {0.0F, HEAD_MAX_ANGLE, -HEAD_MAX_ANGLE};
+    /** 目标角度切换间隔；留出 10 tick 余量让 10 tick 的插值完整播完再切换。 */
+    private static final int HEAD_STEP_TICKS = 20;
 
     private List<String> messages;
     private int intervalMinSeconds;
@@ -69,7 +97,7 @@ public final class CompanionManager {
     private final Map<UUID, Talk> talks = new HashMap<>();
     private final Map<UUID, Integer> nextSoundTicks = new HashMap<>();
     private final Map<UUID, Chase> chases = new HashMap<>();
-    private final Map<UUID, ItemDisplay> models = new HashMap<>();
+    private final Map<UUID, List<ItemDisplay>> models = new HashMap<>();
 
     private record Bubble(TextDisplay display, int expiresAtTick) {
     }
@@ -114,6 +142,7 @@ public final class CompanionManager {
         Cat cat = player.getWorld().spawn(behind(player.getLocation()), Cat.class);
         cat.setOwner(player);
         cat.setSitting(false);
+        cat.setInvisible(true);
         cat.setPersistent(false);
         cat.setInvulnerable(true);
         cat.setCollidable(false);
@@ -155,8 +184,10 @@ public final class CompanionManager {
             cat.remove();
         }
         companions.clear();
-        for (ItemDisplay model : models.values()) {
-            model.remove();
+        for (List<ItemDisplay> parts : models.values()) {
+            for (ItemDisplay display : parts) {
+                display.remove();
+            }
         }
         models.clear();
         for (Bubble bubble : bubbles.values()) {
@@ -176,11 +207,12 @@ public final class CompanionManager {
      * @return {@code false} if the player has no companion to put the bubble above
      */
     public boolean showBubble(Player player, String text) {
-        Cat companion = companionOf(player);
-        if (companion == null) {
+        List<ItemDisplay> parts = models.get(player.getUniqueId());
+        if (parts == null) {
             return false;
         }
-        playSound(companion);
+        ItemDisplay model = parts.get(0);
+        playSound(model);
         // 头顶气泡和聊天栏使用同一句台词，不重新随机。
         player.sendMessage(Component.text("[说怪话] ", NamedTextColor.LIGHT_PURPLE)
                 .append(Component.text(text, NamedTextColor.WHITE)));
@@ -190,12 +222,12 @@ public final class CompanionManager {
         Bubble current = bubbles.get(playerId);
         if (current != null) {
             current.display().text(Component.text(text));
-            current.display().teleport(bubbleLocation(companion));
+            current.display().teleport(bubbleLocation(model));
             bubbles.put(playerId, new Bubble(current.display(), expiresAtTick));
             return true;
         }
 
-        TextDisplay display = companion.getWorld().spawn(bubbleLocation(companion), TextDisplay.class, textDisplay -> {
+        TextDisplay display = model.getWorld().spawn(bubbleLocation(model), TextDisplay.class, textDisplay -> {
             textDisplay.text(Component.text(text));
             textDisplay.setBillboard(Display.Billboard.CENTER);
             textDisplay.setBackgroundColor(Color.fromARGB(0x80000000));
@@ -208,9 +240,9 @@ public final class CompanionManager {
     }
 
     /**
-     * Moves the player's bubble along with its companion and removes it once it has expired.
+     * Moves the player's bubble along with its companion model and removes it once it has expired.
      */
-    public void tickBubble(Player player, Cat companion) {
+    public void tickBubble(Player player) {
         UUID playerId = player.getUniqueId();
         Bubble bubble = bubbles.get(playerId);
         if (bubble == null) {
@@ -221,7 +253,7 @@ public final class CompanionManager {
             bubbles.remove(playerId);
             return;
         }
-        bubble.display().teleport(bubbleLocation(companion));
+        bubble.display().teleport(bubbleLocation(models.get(playerId).get(0)));
     }
 
     /**
@@ -261,15 +293,16 @@ public final class CompanionManager {
     }
 
     /**
-     * Plays the allay sound once the companion's timer has run out, then schedules the next play.
+     * Plays the allay sound from the companion model once the timer has run out, then schedules the
+     * next play.
      */
-    public void tickSound(Player player, Cat companion) {
+    public void tickSound(Player player) {
         UUID playerId = player.getUniqueId();
         Integer nextTick = nextSoundTicks.get(playerId);
         if (nextTick == null || Bukkit.getCurrentTick() < nextTick) {
             return;
         }
-        playSound(companion);
+        playSound(models.get(playerId).get(0));
         nextSoundTicks.put(playerId, scheduleNextSound());
     }
 
@@ -280,10 +313,10 @@ public final class CompanionManager {
     }
 
     /**
-     * Plays the sound where the companion currently is, so nearby players hear it.
+     * Plays the sound where the companion model currently is, so nearby players hear it.
      */
-    private static void playSound(Cat companion) {
-        companion.getWorld().playSound(companion.getLocation(),
+    private static void playSound(ItemDisplay model) {
+        model.getWorld().playSound(model.getLocation(),
                 Sound.ENTITY_ALLAY_AMBIENT_WITHOUT_ITEM, SOUND_VOLUME, SOUND_PITCH);
     }
 
@@ -317,20 +350,37 @@ public final class CompanionManager {
      */
     private void createModel(UUID playerId, Cat cat) {
         Location at = cat.getLocation().add(0, MODEL_Y_OFFSET, 0);
-        ItemDisplay display = cat.getWorld().spawn(at, ItemDisplay.class);
-        display.setItemStack(companionModelItem());
-        display.setPersistent(false);
-        display.setTeleportDuration((int) FollowTask.PERIOD_TICKS);
-        display.setTransformation(modelTransformation(MODEL_SCALE, cat.getLocation().getYaw()));
-        models.put(playerId, display);
+        // 根朝向交给实体自身的 yaw（teleport 插值），Transformation 只保留缩放与关节局部旋转。
+        at.setYaw(cat.getBodyYaw());
+        at.setPitch(0.0F);
+        Transformation base = baseTransformation(MODEL_SCALE);
+        List<ItemDisplay> parts = new ArrayList<>(MODEL_PARTS.size());
+        for (String part : MODEL_PARTS) {
+            ItemDisplay display = cat.getWorld().spawn(at, ItemDisplay.class);
+            display.setItemStack(modelItem(part));
+            display.setBillboard(Display.Billboard.FIXED);
+            display.setPersistent(false);
+            display.setTeleportDuration((int) FollowTask.PERIOD_TICKS);
+            display.setTransformation(base);
+            if ("head".equals(part)) {
+                // 只有头部的局部 Rotation 需要插值；身体/四肢的 Transformation 之后不再改写。
+                display.setInterpolationDelay(0);
+                display.setInterpolationDuration((int) FollowTask.PERIOD_TICKS);
+            }
+            parts.add(display);
+        }
+        models.put(playerId, parts);
     }
 
     /**
-     * 移除玩家对应的模型实体。
+     * 移除玩家对应的全部模型部件。
      */
     public void clearModel(UUID playerId) {
-        ItemDisplay display = models.remove(playerId);
-        if (display != null) {
+        List<ItemDisplay> parts = models.remove(playerId);
+        if (parts == null) {
+            return;
+        }
+        for (ItemDisplay display : parts) {
             display.remove();
         }
     }
@@ -344,15 +394,27 @@ public final class CompanionManager {
     }
 
     /**
-     * 让模型跟随猫的位置和水平朝向；每 10 tick 一次的传送由客户端插值成平滑移动。
+     * 让全部模型部件跟随猫的位置和水平朝向；每 10 tick 一次的传送由客户端插值成平滑移动。
      */
     public void tickModel(UUID playerId, Cat cat) {
-        ItemDisplay display = models.get(playerId);
-        if (display == null) {
+        List<ItemDisplay> parts = models.get(playerId);
+        if (parts == null) {
             return;
         }
-        display.teleport(cat.getLocation().add(0, MODEL_Y_OFFSET, 0));
-        display.setTransformation(modelTransformation(MODEL_SCALE, cat.getLocation().getYaw()));
+        // 根位置和根朝向都通过 teleport 同步（entity yaw + teleportDuration 插值）。
+        Location target = cat.getLocation().add(0, MODEL_Y_OFFSET, 0);
+        target.setYaw(cat.getBodyYaw());
+        target.setPitch(0.0F);
+        // 固定 0° / +15° / -15°，每 20 tick 一个目标；只在目标变化时才写头部 Transformation。
+        int lookStep = (int) ((Bukkit.getCurrentTick() / HEAD_STEP_TICKS) % HEAD_LOOK_ANGLES.length);
+        Transformation head = headTransformation(MODEL_SCALE, HEAD_LOOK_ANGLES[lookStep]);
+        for (int i = 0; i < parts.size(); i++) {
+            ItemDisplay display = parts.get(i);
+            display.teleport(target);
+            if ("head".equals(MODEL_PARTS.get(i)) && !head.equals(display.getTransformation())) {
+                display.setTransformation(head);
+            }
+        }
     }
 
     /**
@@ -360,13 +422,42 @@ public final class CompanionManager {
      * 使模型脚底落在显示实体位置上。
      */
     static Transformation modelTransformation(float scale, float yaw) {
-        float radians = (float) Math.toRadians(yaw + MODEL_YAW_OFFSET);
-        Vector3f translation = new Vector3f(-MODEL_CENTER_X, 0.0F, -MODEL_CENTER_Z)
-                .mul(scale)
-                .rotateY(radians);
+        // Minecraft yaw 顺时针增大，而 JOML rotateY 逆时针增大，因此用 (offset - yaw)；
+        // 平移保持为 0：ItemDisplay 的枢轴本来就是模型中心，不能再额外平移。
+        float radians = (float) Math.toRadians(MODEL_YAW_OFFSET - yaw);
+        return new Transformation(
+                new Vector3f(),
+                new Quaternionf().rotateY(radians),
+                new Vector3f(scale, scale, scale),
+                new Quaternionf());
+    }
+
+    /**
+     * 在基础姿态上增加头部绕关节原点的局部 Y 轴旋转。
+     *
+     * <p>Display 的变换顺序是 T · R_left · S · R_right。要让模型局部坐标中的点绕
+     * p 旋转 R，右旋转用 R，平移取 R_left · S · (p - R·p)；这样 θ = 0 时与原基础
+     * 变换完全一致，也不会在上一帧的变换上累积旋转。
+     */
+    static Transformation headTransformation(float scale, float headAngle) {
+        Quaternionf headRotation = new Quaternionf().rotateY((float) Math.toRadians(headAngle));
+        Vector3f pivot = new Vector3f(0.0F, 0.0F, HEAD_PIVOT_Z);
+        Vector3f translation = pivot.sub(headRotation.transform(new Vector3f(pivot))).mul(scale);
         return new Transformation(
                 translation,
-                new Quaternionf().rotateY(radians),
+                new Quaternionf(),
+                new Vector3f(scale, scale, scale),
+                headRotation);
+    }
+
+    /**
+     * 所有部件共用的静态基础变换：只有缩放，没有旋转和平移。
+     * 根朝向由实体 yaw 负责，因此这个变换在创建后不需要再更新。
+     */
+    private static Transformation baseTransformation(float scale) {
+        return new Transformation(
+                new Vector3f(),
+                new Quaternionf(),
                 new Vector3f(scale, scale, scale),
                 new Quaternionf());
     }
@@ -375,9 +466,16 @@ public final class CompanionManager {
      * 构造带 {@code chimera:companion} 物品模型组件的物品。
      */
     static ItemStack companionModelItem() {
+        return modelItem("companion");
+    }
+
+    /**
+     * 构造带指定 {@code chimera:<part>} 物品模型组件的物品。
+     */
+    private static ItemStack modelItem(String part) {
         ItemStack item = new ItemStack(Material.PAPER);
         ItemMeta meta = item.getItemMeta();
-        meta.setItemModel(new NamespacedKey("chimera", "companion"));
+        meta.setItemModel(new NamespacedKey("chimera", part));
         item.setItemMeta(meta);
         return item;
     }
@@ -399,8 +497,20 @@ public final class CompanionManager {
         return companions.get(player.getUniqueId());
     }
 
-    private static Location bubbleLocation(Cat companion) {
-        return companion.getLocation().add(0, BUBBLE_HEIGHT, 0);
+    /**
+     * 判断实体是否是插件创建的跟宠猫，用于只拦截这些猫的交互。
+     */
+    public boolean isCompanion(Entity entity) {
+        for (Cat cat : companions.values()) {
+            if (cat.getUniqueId().equals(entity.getUniqueId())) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    private static Location bubbleLocation(ItemDisplay model) {
+        return model.getLocation().add(0, BUBBLE_HEIGHT, 0);
     }
 
     /**
