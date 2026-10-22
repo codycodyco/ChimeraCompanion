@@ -88,6 +88,19 @@ public final class CompanionManager {
     /** 目标角度切换间隔；留出 10 tick 余量让 10 tick 的插值完整播完再切换。 */
     private static final int HEAD_STEP_TICKS = 20;
 
+    /** 四条腿的最大摆动角度（度）。 */
+    private static final float LEG_MAX_ANGLE = 20.0F;
+    /** 对角步态相位符号：左前与右后同相，右前与左后反相。顺序同 LEG_PIVOTS。 */
+    private static final float[] LEG_PHASE_SIGNS = {1.0F, -1.0F, -1.0F, 1.0F};
+    /** 四条腿的关节原点（模型局部坐标，单位格），来自 rig_pivots.json。 */
+    private static final float[][] LEG_PIVOTS = {
+            {-0.18125F, -0.25F, -0.10625F},   // front_left_leg
+            {0.18125F, -0.25F, -0.10625F},    // front_right_leg
+            {-0.18125F, -0.2375F, 0.3125F},   // back_left_leg
+            {0.18125F, -0.2375F, 0.3125F}};   // back_right_leg
+    /** 10 tick 内水平位移超过该值即视为猫在移动（0.1 格 / 10 tick）。 */
+    private static final double WALK_EPSILON_SQUARED = 0.01;
+
     private List<String> messages;
     private int intervalMinSeconds;
     private int intervalMaxSeconds;
@@ -98,6 +111,12 @@ public final class CompanionManager {
     private final Map<UUID, Integer> nextSoundTicks = new HashMap<>();
     private final Map<UUID, Chase> chases = new HashMap<>();
     private final Map<UUID, List<ItemDisplay>> models = new HashMap<>();
+    /** 每只跟宠上一次实际应用的头部张望目标索引，避免重复提交相同 Transformation。 */
+    private final Map<UUID, Integer> headLookSteps = new HashMap<>();
+    /** 每只跟宠上一次实际应用的腿部目标（0 静止、1/2 两个步态相位）。 */
+    private final Map<UUID, Integer> legSteps = new HashMap<>();
+    /** 每只跟宠上一轮的猫位置，用来判断猫是否真的在移动。 */
+    private final Map<UUID, Location> lastLocations = new HashMap<>();
 
     private record Bubble(TextDisplay display, int expiresAtTick) {
     }
@@ -190,6 +209,9 @@ public final class CompanionManager {
             }
         }
         models.clear();
+        headLookSteps.clear();
+        legSteps.clear();
+        lastLocations.clear();
         for (Bubble bubble : bubbles.values()) {
             bubble.display().remove();
         }
@@ -349,6 +371,9 @@ public final class CompanionManager {
      * 为猫创建模型实体，位置与朝向立即与猫对齐。
      */
     private void createModel(UUID playerId, Cat cat) {
+        headLookSteps.remove(playerId);
+        legSteps.put(playerId, 0);
+        lastLocations.remove(playerId);
         Location at = cat.getLocation().add(0, MODEL_Y_OFFSET, 0);
         // 根朝向交给实体自身的 yaw（teleport 插值），Transformation 只保留缩放与关节局部旋转。
         at.setYaw(cat.getBodyYaw());
@@ -376,6 +401,9 @@ public final class CompanionManager {
      * 移除玩家对应的全部模型部件。
      */
     public void clearModel(UUID playerId) {
+        headLookSteps.remove(playerId);
+        legSteps.remove(playerId);
+        lastLocations.remove(playerId);
         List<ItemDisplay> parts = models.remove(playerId);
         if (parts == null) {
             return;
@@ -402,17 +430,47 @@ public final class CompanionManager {
             return;
         }
         // 根位置和根朝向都通过 teleport 同步（entity yaw + teleportDuration 插值）。
-        Location target = cat.getLocation().add(0, MODEL_Y_OFFSET, 0);
+        Location catLocation = cat.getLocation();
+        Location previous = lastLocations.put(playerId, catLocation);
+        boolean moving = previous != null
+                && previous.getWorld().equals(catLocation.getWorld())
+                && previous.distanceSquared(catLocation) > WALK_EPSILON_SQUARED;
+        Location target = catLocation.clone().add(0, MODEL_Y_OFFSET, 0);
         target.setYaw(cat.getBodyYaw());
         target.setPitch(0.0F);
-        // 固定 0° / +15° / -15°，每 20 tick 一个目标；只在目标变化时才写头部 Transformation。
+        // 固定 0° / +15° / -15°，每 20 tick 一个目标；只在目标索引变化时才写头部 Transformation。
         int lookStep = (int) ((Bukkit.getCurrentTick() / HEAD_STEP_TICKS) % HEAD_LOOK_ANGLES.length);
+        Integer lastStep = headLookSteps.get(playerId);
+        boolean headStepChanged = lastStep == null || lastStep != lookStep;
+        if (headStepChanged) {
+            headLookSteps.put(playerId, lookStep);
+        }
+        // 行走时按对角步态在两个相位之间切换；停下时目标回到 0。
+        int legStep = moving ? (int) ((Bukkit.getCurrentTick() / FollowTask.PERIOD_TICKS) % 2) + 1 : 0;
+        Integer lastLegStep = legSteps.get(playerId);
+        boolean legStepChanged = lastLegStep == null || lastLegStep != legStep;
+        if (legStepChanged) {
+            legSteps.put(playerId, legStep);
+        }
         Transformation head = headTransformation(MODEL_SCALE, HEAD_LOOK_ANGLES[lookStep]);
         for (int i = 0; i < parts.size(); i++) {
             ItemDisplay display = parts.get(i);
             display.teleport(target);
-            if ("head".equals(MODEL_PARTS.get(i)) && !head.equals(display.getTransformation())) {
+            String part = MODEL_PARTS.get(i);
+            if (headStepChanged && "head".equals(part)) {
                 display.setTransformation(head);
+                display.setInterpolationDelay(0);
+                display.setInterpolationDuration((int) FollowTask.PERIOD_TICKS);
+            }
+            int leg = legIndexOf(part);
+            if (legStepChanged && leg >= 0) {
+                float angle = 0.0F;
+                if (legStep != 0) {
+                    angle = LEG_PHASE_SIGNS[leg] * LEG_MAX_ANGLE * (legStep == 1 ? 1.0F : -1.0F);
+                }
+                display.setTransformation(legTransformation(MODEL_SCALE, LEG_PIVOTS[leg], angle));
+                display.setInterpolationDelay(0);
+                display.setInterpolationDuration((int) FollowTask.PERIOD_TICKS);
             }
         }
     }
@@ -448,6 +506,34 @@ public final class CompanionManager {
                 new Quaternionf(),
                 new Vector3f(scale, scale, scale),
                 headRotation);
+    }
+
+    /**
+     * 让一条腿绕自身关节原点做局部 X 轴旋转。
+     * 变换只包含局部旋转与缩放，根朝向由实体 yaw 负责。
+     */
+    static Transformation legTransformation(float scale, float[] pivot, float angle) {
+        Quaternionf rotation = new Quaternionf().rotateX((float) Math.toRadians(angle));
+        Vector3f p = new Vector3f(pivot[0], pivot[1], pivot[2]);
+        Vector3f translation = p.sub(rotation.transform(new Vector3f(p))).mul(scale);
+        return new Transformation(
+                translation,
+                new Quaternionf(),
+                new Vector3f(scale, scale, scale),
+                rotation);
+    }
+
+    /**
+     * @return 部件在 LEG_PIVOTS 中的下标，非腿部部件返回 {@code -1}
+     */
+    private static int legIndexOf(String part) {
+        return switch (part) {
+            case "front_left_leg" -> 0;
+            case "front_right_leg" -> 1;
+            case "back_left_leg" -> 2;
+            case "back_right_leg" -> 3;
+            default -> -1;
+        };
     }
 
     /**
