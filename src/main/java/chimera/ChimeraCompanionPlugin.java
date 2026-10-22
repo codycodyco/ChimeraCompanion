@@ -15,12 +15,17 @@ import org.bukkit.scheduler.BukkitTask;
  */
 public final class ChimeraCompanionPlugin extends JavaPlugin implements Listener {
 
-    private final CompanionManager companions = new CompanionManager();
+    private CompanionManager companions;
 
     private BukkitTask followTask;
 
     @Override
     public void onEnable() {
+        saveDefaultConfig();
+        companions = new CompanionManager(
+                getConfig().getStringList("dialogue.messages"),
+                getConfig().getInt("dialogue.interval-min", 60),
+                getConfig().getInt("dialogue.interval-max", 180));
         getCommand("chimera").setExecutor(new ChimeraCommand(companions));
         getServer().getPluginManager().registerEvents(this, this);
         followTask = new FollowTask(companions)

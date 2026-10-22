@@ -1,0 +1,10 @@
+# Seconds between two random lines of a companion, picked randomly from this range.
+dialogue:
+  interval-min: 60
+  interval-max: 180
+  messages:
+    - "今天也要好好上班呀～"
+    - "老板，摸鱼记得看看四周呢～"
+    - "这附近好像有钻石的味道～"
+    - "走这么快，是在躲我吗～"
+    - "又挖矿呀，真拼呢～"

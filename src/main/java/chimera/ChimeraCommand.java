@@ -14,6 +14,7 @@ import java.util.Locale;
 public final class ChimeraCommand implements CommandExecutor {
 
     private static final String PREFIX = "[Chimera] ";
+    private static final String TEST_BUBBLE = "你好会上班呀～";
 
     private final CompanionManager companions;
 
@@ -48,7 +49,7 @@ public final class ChimeraCommand implements CommandExecutor {
                 }
             }
             case "bubble" -> {
-                if (companions.showBubble(player)) {
+                if (companions.showBubble(player, TEST_BUBBLE)) {
                     player.sendMessage(Component.text(PREFIX + "小奇美拉冒了个泡泡。"));
                 } else {
                     player.sendMessage(Component.text(PREFIX + "先召唤小奇美拉吧。"));

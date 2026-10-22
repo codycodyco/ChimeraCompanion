@@ -45,7 +45,9 @@ public final class FollowTask extends BukkitRunnable {
             }
 
             // Keep an active bubble glued to the companion and drop it once it expires.
-            companions.tickBubble(playerId, companion);
+            companions.tickBubble(player, companion);
+            companions.tickDialogue(player);
+            companions.tickSound(player, companion);
 
             // Dead owners leave the companion frozen where it is until the respawn event moves it.
             if (player.getHealth() <= 0.0D) {
