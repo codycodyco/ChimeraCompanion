@@ -6,15 +6,11 @@ import chimera.trigger.SurvivalTriggerListener;
 import chimera.trigger.TriggerService;
 import chimera.trigger.detector.DeathTrigger;
 import chimera.trigger.detector.IdleTrigger;
-import org.bukkit.Location;
-import org.bukkit.entity.ItemDisplay;
 import org.bukkit.entity.Player;
 import org.bukkit.plugin.java.JavaPlugin;
 import org.bukkit.scheduler.BukkitTask;
 
 import java.io.IOException;
-import java.util.HashMap;
-import java.util.Map;
 import java.util.UUID;
 import java.util.logging.Level;
 
@@ -39,9 +35,6 @@ public final class ChimeraCompanionPlugin extends JavaPlugin {
     private BukkitTask followTask;
 
     private BukkitTask idleTask;
-
-    /** 每个玩家当前的模型测试实体，重复执行指令时替换。 */
-    private final Map<UUID, ItemDisplay> testModels = new HashMap<>();
 
     @Override
     public void onEnable() {
@@ -108,10 +101,7 @@ public final class ChimeraCompanionPlugin extends JavaPlugin {
         triggers.clearAll();
         deathTrigger.clearAll();
         idleTrigger.clearAll();
-        for (ItemDisplay display : testModels.values()) {
-            display.remove();
-        }
-        testModels.clear();
+        companions.clearTestModels();
     }
 
     /**
@@ -134,30 +124,13 @@ public final class ChimeraCompanionPlugin extends JavaPlugin {
      * @param yaw   模型朝向（度）
      */
     public void showTestModel(Player player, float scale, float yaw) {
-        UUID playerId = player.getUniqueId();
-        ItemDisplay previous = testModels.remove(playerId);
-        if (previous != null) {
-            previous.remove();
-        }
-
-        Location at = player.getEyeLocation()
-                .add(player.getLocation().getDirection().normalize().multiply(2.0))
-                .subtract(0, CompanionManager.MODEL_CENTER_Y * scale, 0);
-        ItemDisplay display = player.getWorld().spawn(at, ItemDisplay.class);
-        display.setItemStack(CompanionManager.companionModelItem());
-        display.setPersistent(false);
-        display.setTransformation(CompanionManager.modelTransformation(scale, yaw));
-
-        testModels.put(playerId, display);
+        companions.showTestModel(player, scale, yaw);
     }
 
     /**
      * 玩家退出时移除其测试模型。
      */
     void discardTestModel(UUID playerId) {
-        ItemDisplay display = testModels.remove(playerId);
-        if (display != null) {
-            display.remove();
-        }
+        companions.clearTestModel(playerId);
     }
 }
