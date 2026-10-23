@@ -1,6 +1,7 @@
 package chimera;
 
 import chimera.trigger.TriggerService;
+import chimera.trigger.detector.CatchUpTrigger;
 import org.bukkit.Bukkit;
 import org.bukkit.entity.Cat;
 import org.bukkit.entity.Player;
@@ -27,10 +28,12 @@ public final class FollowTask extends BukkitRunnable {
 
     private final CompanionManager companions;
     private final TriggerService triggers;
+    private final CatchUpTrigger catchUp;
 
-    public FollowTask(CompanionManager companions, TriggerService triggers) {
+    public FollowTask(CompanionManager companions, TriggerService triggers, CatchUpTrigger catchUp) {
         this.companions = companions;
         this.triggers = triggers;
+        this.catchUp = catchUp;
     }
 
     @Override
@@ -62,7 +65,7 @@ public final class FollowTask extends BukkitRunnable {
                 companions.clearBubble(playerId);
                 companion.teleport(CompanionManager.behind(player.getLocation()));
                 companions.recreateModel(playerId, companion);
-                companions.clearChase(playerId);
+                catchUp.clear(playerId);
                 triggers.showTrigger(player, "companion.catch_up");
                 continue;
             }
@@ -70,11 +73,11 @@ public final class FollowTask extends BukkitRunnable {
             double distance = companion.getLocation().distance(player.getLocation());
             if (distance > TELEPORT_DISTANCE) {
                 companion.teleport(CompanionManager.behind(player.getLocation()));
-                companions.clearChase(playerId);
+                catchUp.clear(playerId);
                 triggers.showTrigger(player, "companion.catch_up");
             } else if (distance < STOP_DISTANCE) {
-                companions.clearChase(playerId);
-            } else if (companions.tickChase(playerId, Bukkit.getCurrentTick())) {
+                catchUp.clear(playerId);
+            } else if (catchUp.tick(playerId, Bukkit.getCurrentTick())) {
                 triggers.showTrigger(player, "companion.catch_up");
             }
         }

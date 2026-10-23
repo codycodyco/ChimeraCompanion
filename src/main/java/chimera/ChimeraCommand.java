@@ -22,11 +22,14 @@ public final class ChimeraCommand implements CommandExecutor {
     private final CompanionManager companions;
     private final TriggerService triggers;
     private final ChimeraCompanionPlugin plugin;
+    private final CompanionLifecycleListener lifecycleListener;
 
-    public ChimeraCommand(CompanionManager companions, TriggerService triggers, ChimeraCompanionPlugin plugin) {
+    public ChimeraCommand(CompanionManager companions, TriggerService triggers,
+                          ChimeraCompanionPlugin plugin, CompanionLifecycleListener lifecycleListener) {
         this.companions = companions;
         this.triggers = triggers;
         this.plugin = plugin;
+        this.lifecycleListener = lifecycleListener;
     }
 
     @Override
@@ -92,11 +95,11 @@ public final class ChimeraCommand implements CommandExecutor {
         if (companions.companionOf(player) != null) {
             companions.dismiss(player.getUniqueId());
             triggers.clear(player.getUniqueId());
-            plugin.setCompanionEnabled(player, false);
+            lifecycleListener.setCompanionEnabled(player, false);
             player.sendMessage(Component.text(PREFIX + "小奇美拉回去休息了。"));
         } else {
             companions.summon(player);
-            plugin.setCompanionEnabled(player, true);
+            lifecycleListener.setCompanionEnabled(player, true);
             player.sendMessage(Component.text(PREFIX + "小奇美拉出现啦～"));
         }
     }
