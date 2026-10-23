@@ -7,7 +7,7 @@
   "parts": {
     "body": {
       "model_id": "chimera:body",
-      "element_count": 19,
+      "element_count": 18,
       "groups_merged": [
         "body",
         "tail",
@@ -77,7 +77,7 @@
     },
     "back_left_leg": {
       "model_id": "chimera:back_left_leg",
-      "element_count": 2,
+      "element_count": 3,
       "groups_merged": [
         "back_left_leg"
       ],

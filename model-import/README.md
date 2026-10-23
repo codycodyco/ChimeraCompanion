@@ -13,11 +13,11 @@
 
 | 部件 | 模型 ID | Cube 数量 |
 | --- | --- | ---: |
-| body | `chimera:body` | 19 |
+| body | `chimera:body` | 18 |
 | head | `chimera:head` | 42 |
 | front_left_leg | `chimera:front_left_leg` | 3 |
 | front_right_leg | `chimera:front_right_leg` | 3 |
-| back_left_leg | `chimera:back_left_leg` | 2 |
+| back_left_leg | `chimera:back_left_leg` | 3 |
 | back_right_leg | `chimera:back_right_leg` | 3 |
 | 原整体模型 | `chimera:companion` | 72 |
 
