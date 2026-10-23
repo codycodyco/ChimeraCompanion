@@ -1,0 +1,4 @@
+name: ChimeraCompanion
+author: cody
+version: '${version}'
+bundles: [main]

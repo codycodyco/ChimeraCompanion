@@ -1,5 +1,7 @@
 package chimera;
 
+import ai.resourcepack.engine.RPEnginePlugin;
+import ai.resourcepack.engine.api.AddonContent;
 import chimera.trigger.TriggerService;
 import org.bukkit.Location;
 import org.bukkit.NamespacedKey;
@@ -26,12 +28,14 @@ import org.bukkit.persistence.PersistentDataType;
 import org.bukkit.plugin.java.JavaPlugin;
 import org.bukkit.scheduler.BukkitTask;
 
+import java.io.IOException;
 import java.time.Duration;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
+import java.util.logging.Level;
 
 /**
  * Registers the companion command, drives the follow task and keeps companions in sync with their
@@ -88,6 +92,9 @@ public final class ChimeraCompanionPlugin extends JavaPlugin implements Listener
 
     @Override
     public void onEnable() {
+        if (!installResourcePack()) {
+            return;
+        }
         saveDefaultConfig();
         companionEnabledKey = new NamespacedKey(this, "companion_enabled");
         companions = new CompanionManager(
@@ -109,8 +116,36 @@ public final class ChimeraCompanionPlugin extends JavaPlugin implements Listener
         }, 1L);
     }
 
+    /**
+     * Installs the resource pack carried in this plugin's jar into RP Engine.
+     *
+     * <p>{@link AddonContent#install} writes only when this jar's version is newer than the
+     * installed content, so {@code reload()} is called only when something actually changed.
+     *
+     * @return {@code false} when the content could not be installed and the plugin was disabled
+     */
+    private boolean installResourcePack() {
+        RPEnginePlugin engine = (RPEnginePlugin) getServer().getPluginManager().getPlugin("RPEngine");
+        try {
+            if (AddonContent.install(this, engine, "chimera")) {
+                getLogger().info("Installed Chimera content into RP Engine, reloading its resource packs.");
+                engine.reload();
+            }
+            return true;
+        } catch (IOException e) {
+            getLogger().log(Level.SEVERE,
+                    "Could not install the Chimera resource pack into RP Engine; disabling ChimeraCompanion.", e);
+            getServer().getPluginManager().disablePlugin(this);
+            return false;
+        }
+    }
+
     @Override
     public void onDisable() {
+        // A failed resource install disables the plugin before the runtime state below exists.
+        if (followTask == null) {
+            return;
+        }
         followTask.cancel();
         idleTask.cancel();
         companions.dismissAll();
