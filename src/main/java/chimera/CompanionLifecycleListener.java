@@ -62,7 +62,7 @@ public final class CompanionLifecycleListener implements Listener {
         triggers.clear(playerId);
         deathTrigger.clear(playerId);
         idleTrigger.clear(playerId);
-        plugin.discardTestModel(playerId);
+        companions.clearTestModel(playerId);
     }
 
     /**

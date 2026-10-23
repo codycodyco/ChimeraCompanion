@@ -4,6 +4,7 @@ import ai.resourcepack.engine.RPEnginePlugin;
 import ai.resourcepack.engine.api.AddonContent;
 import chimera.trigger.SurvivalTriggerListener;
 import chimera.trigger.TriggerService;
+import chimera.trigger.detector.CatchUpTrigger;
 import chimera.trigger.detector.DeathTrigger;
 import chimera.trigger.detector.IdleTrigger;
 import org.bukkit.entity.Player;
@@ -11,7 +12,6 @@ import org.bukkit.plugin.java.JavaPlugin;
 import org.bukkit.scheduler.BukkitTask;
 
 import java.io.IOException;
-import java.util.UUID;
 import java.util.logging.Level;
 
 /**
@@ -42,10 +42,12 @@ public final class ChimeraCompanionPlugin extends JavaPlugin {
             return;
         }
         saveDefaultConfig();
+        CatchUpTrigger catchUp = new CatchUpTrigger();
         companions = new CompanionManager(
                 getConfig().getStringList("dialogue.messages"),
                 getConfig().getInt("dialogue.interval-min", 60),
-                getConfig().getInt("dialogue.interval-max", 180));
+                getConfig().getInt("dialogue.interval-max", 180),
+                catchUp);
         triggers = new TriggerService(this, companions);
         deathTrigger = new DeathTrigger();
         idleTrigger = new IdleTrigger(companions, triggers);
@@ -58,7 +60,7 @@ public final class ChimeraCompanionPlugin extends JavaPlugin {
         getServer().getPluginManager().registerEvents(lifecycleListener, this);
         getServer().getPluginManager().registerEvents(survivalListener, this);
 
-        followTask = new FollowTask(companions, triggers)
+        followTask = new FollowTask(companions, triggers, catchUp)
                 .runTaskTimer(this, FollowTask.PERIOD_TICKS, FollowTask.PERIOD_TICKS);
         idleTask = getServer().getScheduler().runTaskTimer(this, idleTrigger::run,
                 IDLE_CHECK_PERIOD_TICKS, IDLE_CHECK_PERIOD_TICKS);
@@ -125,12 +127,5 @@ public final class ChimeraCompanionPlugin extends JavaPlugin {
      */
     public void showTestModel(Player player, float scale, float yaw) {
         companions.showTestModel(player, scale, yaw);
-    }
-
-    /**
-     * 玩家退出时移除其测试模型。
-     */
-    void discardTestModel(UUID playerId) {
-        companions.clearTestModel(playerId);
     }
 }

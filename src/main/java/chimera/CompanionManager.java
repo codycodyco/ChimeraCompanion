@@ -1,5 +1,6 @@
 package chimera;
 
+import chimera.trigger.detector.CatchUpTrigger;
 import org.bukkit.Location;
 import org.bukkit.entity.Cat;
 import org.bukkit.entity.Entity;
@@ -21,19 +22,15 @@ import java.util.UUID;
 public final class CompanionManager {
 
     private static final double BEHIND_DISTANCE = 1.5;
-    /** 连续追赶达到该 tick 数（15 秒）后尝试触发 companion.catch_up。 */
-    private static final int CHASE_TRIGGER_TICKS = 15 * 20;
 
     private final Map<UUID, Cat> companions = new HashMap<>();
-    private final Map<UUID, Chase> chases = new HashMap<>();
     private final CompanionModel models = new CompanionModel();
     private final CompanionDialogue dialogue = new CompanionDialogue(models);
+    private final CatchUpTrigger catchUp;
 
-    /** 一轮追赶：startTick 为开始追赶的 tick，attempted 表示本轮已经尝试过触发。 */
-    private record Chase(int startTick, boolean attempted) {
-    }
-
-    public CompanionManager(List<String> messages, int intervalMinSeconds, int intervalMaxSeconds) {
+    public CompanionManager(List<String> messages, int intervalMinSeconds, int intervalMaxSeconds,
+                            CatchUpTrigger catchUp) {
+        this.catchUp = catchUp;
         reload(messages, intervalMinSeconds, intervalMaxSeconds);
     }
 
@@ -73,7 +70,7 @@ public final class CompanionManager {
         companions.put(playerId, cat);
         models.create(playerId, cat);
         dialogue.start(playerId);
-        chases.remove(playerId);
+        catchUp.clear(playerId);
         return true;
     }
 
@@ -85,7 +82,7 @@ public final class CompanionManager {
     public boolean dismiss(UUID playerId) {
         dialogue.stop(playerId);
         models.clear(playerId);
-        chases.remove(playerId);
+        catchUp.clear(playerId);
         Cat cat = companions.remove(playerId);
         if (cat == null) {
             return false;
@@ -104,7 +101,7 @@ public final class CompanionManager {
         companions.clear();
         models.clearAll();
         dialogue.clearAll();
-        chases.clear();
+        catchUp.clearAll();
     }
 
     /**
@@ -151,31 +148,6 @@ public final class CompanionManager {
      */
     public void tickDialogue(Player player) {
         dialogue.tickDialogue(player);
-    }
-
-    /**
-     * 更新玩家的追赶状态：第一次调用只记录起点，之后判断是否已连续追赶 15 秒。
-     *
-     * @return 本轮追赶达到阈值且尚未尝试过触发时为 {@code true}
-     */
-    public boolean tickChase(UUID playerId, int nowTick) {
-        Chase chase = chases.get(playerId);
-        if (chase == null) {
-            chases.put(playerId, new Chase(nowTick, false));
-            return false;
-        }
-        if (chase.attempted() || nowTick - chase.startTick() < CHASE_TRIGGER_TICKS) {
-            return false;
-        }
-        chases.put(playerId, new Chase(chase.startTick(), true));
-        return true;
-    }
-
-    /**
-     * 清除追赶状态：追上主人、停止追赶、完成传送或跟宠移除时调用。
-     */
-    public void clearChase(UUID playerId) {
-        chases.remove(playerId);
     }
 
     /**
